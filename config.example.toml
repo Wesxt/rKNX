@@ -1,5 +1,9 @@
 # rKNX Daemon Configuration File Example
 # Place this file at /etc/rknx/config.toml
+#
+# NOTE: Defining any section header (such as [server], [client], [router], [usb], or [tpuart])
+# tells the daemon to instantiate and run that specific service/interface. Commenting out or
+# omitting a section prevents that service from being initialized.
 
 # =====================================================================
 # Configuration for KNXnet/IP Server (Routing & Tunneling Gateway)
