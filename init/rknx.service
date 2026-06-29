@@ -1,0 +1,15 @@
+[Unit]
+Description=rKNX Daemon Service
+Documentation=https://github.com/Wesxt/rKNX
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/rknx --config /etc/rknx/config.toml
+Restart=always
+RestartSec=5
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

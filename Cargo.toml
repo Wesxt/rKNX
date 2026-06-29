@@ -1,0 +1,25 @@
+[package]
+name = "rKNX"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/Wesxt/rKNX"
+
+[dependencies]
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.14.0"
+# The CI careers to support
+ci = ["github"]
+# The installers to generate for each app
+installers = ["shell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "armv7-unknown-linux-gnueabihf"]
+# Extra static files to include in each release archive
+include = ["init/rknx.service", "init/install.sh", "config.example.toml"]
