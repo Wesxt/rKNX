@@ -84,6 +84,7 @@ reconnect_delay_ms = 5000
 # Configuration for KNXnet/IP Router Interface (Optional)
 # =====================================================================
 [router]
+# [TODO] There are missing options for the links that the router instantiates.
 # [Required] Individual Physical Address (IA) assigned to the Router
 individual_address = "1.0.2"
 

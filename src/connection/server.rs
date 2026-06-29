@@ -6,18 +6,20 @@ use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{Duration, Instant};
 
-use crate::core::cemi::{Cemi, LBusmon, MPropWithPayload};
-use crate::core::knxnetip_header::KnxNetIpHeader;
-use crate::core::knxnetip_enum::{KnxNetIpServiceType, KnxNetIpErrorCodes, ConnectionType, HostProtocolCode};
-use crate::core::knxnetip_structures::{
-    Hpai, Cri, Crd, RoutingBusy, RoutingLostMessage, StatusTunnelingSlot,
-    DeviceInformationDib, IpConfigDib, IpCurrentConfigDib, TunnelSlot,
-    TunnellingInfoDib, ExtendedDeviceInformationDib, SupportedServicesDib, Dib
-};
-use crate::core::device_descriptor_type::DeviceDescriptorType0;
-use crate::errors::KnxError;
 use super::KnxService;
-use super::tunnel_connection::{TunnelConnection, RequestAction};
+use super::tunnel_connection::{RequestAction, TunnelConnection};
+use crate::core::cemi::{Cemi, LBusmon, MPropWithPayload};
+use crate::core::device_descriptor_type::DeviceDescriptorType0;
+use crate::core::knxnetip_enum::{
+    ConnectionType, HostProtocolCode, KnxNetIpErrorCodes, KnxNetIpServiceType,
+};
+use crate::core::knxnetip_header::KnxNetIpHeader;
+use crate::core::knxnetip_structures::{
+    Crd, Cri, DeviceInformationDib, Dib, ExtendedDeviceInformationDib, Hpai, IpConfigDib,
+    IpCurrentConfigDib, RoutingBusy, RoutingLostMessage, StatusTunnelingSlot, SupportedServicesDib,
+    TunnelSlot, TunnellingInfoDib,
+};
+use crate::errors::KnxError;
 use crate::utils::knx_helper::KnxHelper;
 
 /// States for the KNXnetIPServer Finite State Machine.
@@ -197,10 +199,12 @@ impl KnxNetIpServer {
         };
 
         let mcast_addr = format!("{}:{}", ip_multicast, port);
-        let mcast_socket_addr: SocketAddr = mcast_addr.parse()
+        let mcast_socket_addr: SocketAddr = mcast_addr
+            .parse()
             .map_err(|_| KnxError::InvalidParametersForDpt)?;
 
-        let socket = UdpSocket::bind("0.0.0.0:0").await
+        let socket = UdpSocket::bind("0.0.0.0:0")
+            .await
             .map_err(|_| KnxError::InvalidParametersForDpt)?;
         let socket = Arc::new(socket);
         let _ = socket.set_broadcast(true);
@@ -266,7 +270,8 @@ impl KnxNetIpServer {
                                             break;
                                         }
                                         let dib_buf = &body[offset..offset + dib_len];
-                                        if let Ok(Dib::DeviceInfo(info)) = Dib::from_buffer(dib_buf) {
+                                        if let Ok(Dib::DeviceInfo(info)) = Dib::from_buffer(dib_buf)
+                                        {
                                             device_info = Some(info);
                                         }
                                         offset += dib_len;
@@ -279,22 +284,32 @@ impl KnxNetIpServer {
                                                 std::net::IpAddr::V4(v4) => v4,
                                                 _ => hpai.ip_address,
                                             };
-                                            discovered.insert(key, KnxDiscoveredDevice {
-                                                ip,
-                                                port: hpai.port,
-                                                knx_medium: info.knx_medium,
-                                                device_status: info.device_status,
-                                                individual_address: info.individual_address,
-                                                project_installation_id: info.project_installation_id,
-                                                serial_number: info.friendly_name.as_bytes().iter().copied().fold([0u8; 6], |mut acc, x| {
-                                                    // deterministic fallback
-                                                    acc[x as usize % 6] ^= x;
-                                                    acc
-                                                }),
-                                                routing_multicast_address: info.routing_multicast_address,
-                                                mac_address: info.mac_address,
-                                                friendly_name: info.friendly_name,
-                                            });
+                                            discovered.insert(
+                                                key,
+                                                KnxDiscoveredDevice {
+                                                    ip,
+                                                    port: hpai.port,
+                                                    knx_medium: info.knx_medium,
+                                                    device_status: info.device_status,
+                                                    individual_address: info.individual_address,
+                                                    project_installation_id: info
+                                                        .project_installation_id,
+                                                    serial_number: info
+                                                        .friendly_name
+                                                        .as_bytes()
+                                                        .iter()
+                                                        .copied()
+                                                        .fold([0u8; 6], |mut acc, x| {
+                                                            // deterministic fallback
+                                                            acc[x as usize % 6] ^= x;
+                                                            acc
+                                                        }),
+                                                    routing_multicast_address: info
+                                                        .routing_multicast_address,
+                                                    mac_address: info.mac_address,
+                                                    friendly_name: info.friendly_name,
+                                                },
+                                            );
                                         }
                                     }
                                 }
@@ -331,8 +346,8 @@ impl KnxNetIpServer {
 
     /// Resolve HPAI from RemoteInfo and local configs.
     fn get_hpai(&self, _rinfo: Option<SocketAddr>) -> Hpai {
-        let mut local_ip = Ipv4Addr::from_str(&self.options.local_ip)
-            .unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
+        let mut local_ip =
+            Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
         if local_ip.is_unspecified() {
             if let Some(ip) = get_local_ip() {
                 local_ip = ip;
@@ -342,10 +357,15 @@ impl KnxNetIpServer {
     }
 
     /// Generates Identification DIBs
-    fn get_identification_dibs(&self, service_type: KnxNetIpServiceType, effective_local_ip: Ipv4Addr) -> Vec<Dib> {
-        let individual_address = KnxHelper::get_address_from_string(&self.options.individual_address)
-            .map(|buf| ((buf[0] as u16) << 8) | buf[1] as u16)
-            .unwrap_or(0);
+    fn get_identification_dibs(
+        &self,
+        service_type: KnxNetIpServiceType,
+        effective_local_ip: Ipv4Addr,
+    ) -> Vec<Dib> {
+        let individual_address =
+            KnxHelper::get_address_from_string(&self.options.individual_address)
+                .map(|buf| ((buf[0] as u16) << 8) | buf[1] as u16)
+                .unwrap_or(0);
 
         let serial_number = {
             let mut sn = [0u8; 6];
@@ -357,7 +377,8 @@ impl KnxNetIpServer {
         };
 
         let mac_address = parse_mac(&self.options.mac_address).unwrap_or([0u8; 6]);
-        let routing_multicast_address = Ipv4Addr::from_str(&self.options.ip).unwrap_or(Ipv4Addr::new(224, 0, 23, 12));
+        let routing_multicast_address =
+            Ipv4Addr::from_str(&self.options.ip).unwrap_or(Ipv4Addr::new(224, 0, 23, 12));
 
         let dev_info = DeviceInformationDib {
             knx_medium: crate::core::knxnetip_enum::KnxMedium::KnxIp,
@@ -383,7 +404,9 @@ impl KnxNetIpServer {
             return vec![Dib::DeviceInfo(dev_info), Dib::SupportedServices(supp_svc)];
         }
 
-        let device_descriptor_type0 = DeviceDescriptorType0::new(crate::core::device_descriptor_type::DeviceDescriptorType0::KNXNET_IP_ROUTER.value());
+        let device_descriptor_type0 = DeviceDescriptorType0::new(
+            crate::core::device_descriptor_type::DeviceDescriptorType0::KNXNET_IP_ROUTER.value(),
+        );
         let ext_dev_info = ExtendedDeviceInformationDib {
             medium_status: false,
             maximal_local_apdu_length: 254,
@@ -417,7 +440,9 @@ impl KnxNetIpServer {
             status.set_usable(conn.is_some());
             status.set_free(conn.is_none());
             slots.push(TunnelSlot {
-                address: conn.map(|c| c.knx_address).unwrap_or(self.client_addrs_start_int + (i as u16) - 1),
+                address: conn
+                    .map(|c| c.knx_address)
+                    .unwrap_or(self.client_addrs_start_int + (i as u16) - 1),
                 status,
             });
         }
@@ -452,7 +477,8 @@ impl KnxNetIpServer {
         let body = &msg[KnxNetIpHeader::HEADER_SIZE_10 as usize..];
 
         // Anti-Echo Check by IP/Port
-        let local_ip = Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
+        let local_ip =
+            Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
         if let SocketAddr::V4(addr_v4) = rinfo {
             if *addr_v4.ip() == local_ip && addr_v4.port() == self.options.port {
                 return Ok(());
@@ -489,7 +515,10 @@ impl KnxNetIpServer {
                 let mut packet = res_header.to_buffer();
                 packet.extend_from_slice(&res_body);
 
-                let dest = SocketAddr::new(std::net::IpAddr::V4(client_hpai.ip_address), client_hpai.port);
+                let dest = SocketAddr::new(
+                    std::net::IpAddr::V4(client_hpai.ip_address),
+                    client_hpai.port,
+                );
                 let _ = socket.send_to(&packet[..], &dest).await;
             }
 
@@ -500,7 +529,10 @@ impl KnxNetIpServer {
                 }
 
                 let server_hpai = self.get_hpai(Some(rinfo));
-                let dibs = self.get_identification_dibs(KnxNetIpServiceType::DescriptionResponse, server_hpai.ip_address);
+                let dibs = self.get_identification_dibs(
+                    KnxNetIpServiceType::DescriptionResponse,
+                    server_hpai.ip_address,
+                );
 
                 let mut res_body = Vec::new();
                 for dib in dibs {
@@ -515,7 +547,10 @@ impl KnxNetIpServer {
                 let mut packet = res_header.to_buffer();
                 packet.extend_from_slice(&res_body);
 
-                let dest = SocketAddr::new(std::net::IpAddr::V4(client_hpai.ip_address), client_hpai.port);
+                let dest = SocketAddr::new(
+                    std::net::IpAddr::V4(client_hpai.ip_address),
+                    client_hpai.port,
+                );
                 let _ = socket.send_to(&packet[..], &dest).await;
             }
 
@@ -543,7 +578,9 @@ impl KnxNetIpServer {
                     if addr != 0 {
                         let mut stale_channel = None;
                         for (&cid, conn) in clients.iter() {
-                            if conn.knx_address == addr && conn.control_hpai.ip_address == client_control_hpai.ip_address {
+                            if conn.knx_address == addr
+                                && conn.control_hpai.ip_address == client_control_hpai.ip_address
+                            {
                                 stale_channel = Some(cid);
                                 break;
                             }
@@ -591,7 +628,10 @@ impl KnxNetIpServer {
                     let mut packet = res_header.to_buffer();
                     packet.extend_from_slice(&res_body);
 
-                    let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+                    let dest = SocketAddr::new(
+                        std::net::IpAddr::V4(client_control_hpai.ip_address),
+                        client_control_hpai.port,
+                    );
                     let _ = socket.send_to(&packet[..], &dest).await;
                     return Ok(());
                 } else if cri.connection_type == ConnectionType::TunnelConnection {
@@ -610,8 +650,9 @@ impl KnxNetIpServer {
                     }
 
                     if status == KnxNetIpErrorCodes::ENoError as u8 {
-                        let knx_address_str = KnxHelper::get_address_from_number(knx_addr, ".", false)
-                            .unwrap_or_else(|_| "0.0.0".to_string());
+                        let knx_address_str =
+                            KnxHelper::get_address_from_number(knx_addr, ".", false)
+                                .unwrap_or_else(|_| "0.0.0".to_string());
 
                         let conn = TunnelConnection::new(
                             channel_id,
@@ -639,7 +680,10 @@ impl KnxNetIpServer {
                         let mut packet = res_header.to_buffer();
                         packet.extend_from_slice(&res_body);
 
-                        let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+                        let dest = SocketAddr::new(
+                            std::net::IpAddr::V4(client_control_hpai.ip_address),
+                            client_control_hpai.port,
+                        );
                         let _ = socket.send_to(&packet[..], &dest).await;
                         return Ok(());
                     }
@@ -651,7 +695,10 @@ impl KnxNetIpServer {
                 let res_header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectResponse, 8);
                 let mut packet = res_header.to_buffer();
                 packet.extend_from_slice(&[0, status]);
-                let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+                let dest = SocketAddr::new(
+                    std::net::IpAddr::V4(client_control_hpai.ip_address),
+                    client_control_hpai.port,
+                );
                 let _ = socket.send_to(&packet[..], &dest).await;
             }
 
@@ -679,7 +726,10 @@ impl KnxNetIpServer {
                 let mut packet = res_header.to_buffer();
                 packet.extend_from_slice(&res_body);
 
-                let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+                let dest = SocketAddr::new(
+                    std::net::IpAddr::V4(client_control_hpai.ip_address),
+                    client_control_hpai.port,
+                );
                 let _ = socket.send_to(&packet[..], &dest).await;
             }
 
@@ -705,7 +755,10 @@ impl KnxNetIpServer {
                 let mut packet = res_header.to_buffer();
                 packet.extend_from_slice(&res_body);
 
-                let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+                let dest = SocketAddr::new(
+                    std::net::IpAddr::V4(client_control_hpai.ip_address),
+                    client_control_hpai.port,
+                );
                 let _ = socket.send_to(&packet[..], &dest).await;
             }
 
@@ -749,24 +802,33 @@ impl KnxNetIpServer {
                         let val = conn.validate_request(seq);
                         (val.action, val.status, conn.knx_layer, conn.knx_address)
                     } else {
-                        (RequestAction::RetransmitAck, KnxNetIpErrorCodes::EConnectionId as u8, crate::core::knxnetip_enum::KnxLayer::LinkLayer, 0)
+                        (
+                            RequestAction::RetransmitAck,
+                            KnxNetIpErrorCodes::EConnectionId as u8,
+                            crate::core::knxnetip_enum::KnxLayer::LinkLayer,
+                            0,
+                        )
                     }
                 };
 
                 if action == RequestAction::RetransmitAck {
-                    self.send_tunnel_ack(channel_id, seq, status, rinfo, socket).await;
+                    self.send_tunnel_ack(channel_id, seq, status, rinfo, socket)
+                        .await;
                     return Ok(());
                 }
                 if action == RequestAction::Discard {
                     return Ok(());
                 }
 
-                self.send_tunnel_ack(channel_id, seq, status, rinfo, socket).await;
+                self.send_tunnel_ack(channel_id, seq, status, rinfo, socket)
+                    .await;
 
                 let msg_code = cemi_bytes[0];
                 let add_info_len = cemi_bytes[1];
 
-                if knx_layer == crate::core::knxnetip_enum::KnxLayer::BusmonitorLayer && (msg_code == 0x11 || msg_code == 0x10) {
+                if knx_layer == crate::core::knxnetip_enum::KnxLayer::BusmonitorLayer
+                    && (msg_code == 0x11 || msg_code == 0x10)
+                {
                     return Ok(());
                 }
 
@@ -774,7 +836,8 @@ impl KnxNetIpServer {
                 if msg_code == 0x11 {
                     let src_ia_offset = 2 + add_info_len as usize + 2;
                     if src_ia_offset + 1 < mut_cemi_bytes.len() {
-                        let src_ia = ((mut_cemi_bytes[src_ia_offset] as u16) << 8) | (mut_cemi_bytes[src_ia_offset + 1] as u16);
+                        let src_ia = ((mut_cemi_bytes[src_ia_offset] as u16) << 8)
+                            | (mut_cemi_bytes[src_ia_offset + 1] as u16);
                         if src_ia == 0 {
                             mut_cemi_bytes[src_ia_offset] = (knx_address >> 8) as u8;
                             mut_cemi_bytes[src_ia_offset + 1] = (knx_address & 0xFF) as u8;
@@ -784,10 +847,11 @@ impl KnxNetIpServer {
 
                 if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                     let _ = self.incoming_tx.send(cemi.clone());
-                    let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
-                        .write()
-                        .unwrap()
-                        .process_cemi(&cemi);
+                    let _ =
+                        crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
+                            .write()
+                            .unwrap()
+                            .process_cemi(&cemi);
                 }
 
                 let mut routing_cemi = mut_cemi_bytes.clone();
@@ -845,25 +909,37 @@ impl KnxNetIpServer {
                         let val = conn.validate_request(seq);
                         (val.action, val.status)
                     } else {
-                        (RequestAction::RetransmitAck, KnxNetIpErrorCodes::EConnectionId as u8)
+                        (
+                            RequestAction::RetransmitAck,
+                            KnxNetIpErrorCodes::EConnectionId as u8,
+                        )
                     }
                 };
 
                 if action == RequestAction::RetransmitAck {
-                    self.send_device_config_ack(channel_id, seq, status, socket).await;
+                    self.send_device_config_ack(channel_id, seq, status, socket)
+                        .await;
                     return Ok(());
                 }
                 if action == RequestAction::Discard {
                     return Ok(());
                 }
 
-                self.send_device_config_ack(channel_id, seq, KnxNetIpErrorCodes::ENoError as u8, socket).await;
+                self.send_device_config_ack(
+                    channel_id,
+                    seq,
+                    KnxNetIpErrorCodes::ENoError as u8,
+                    socket,
+                )
+                .await;
 
                 if let Ok(cemi) = Cemi::from_buffer(cemi_bytes) {
                     if let Cemi::MPropReadReq(req) = cemi {
                         let mut data = Vec::new();
                         if req.interface_object_type == 0 && req.property_id == 1 {
-                            if let Ok(addr_buf) = KnxHelper::get_address_from_string(&self.options.individual_address) {
+                            if let Ok(addr_buf) =
+                                KnxHelper::get_address_from_string(&self.options.individual_address)
+                            {
                                 data = addr_buf.to_vec();
                             }
                         }
@@ -879,7 +955,10 @@ impl KnxNetIpServer {
 
                         let mut clients = self.clients.write().unwrap();
                         if let Some(conn) = clients.get_mut(&channel_id) {
-                            conn.enqueue(&res_cemi.to_buffer(), KnxNetIpServiceType::DeviceConfigurationRequest);
+                            conn.enqueue(
+                                &res_cemi.to_buffer(),
+                                KnxNetIpServiceType::DeviceConfigurationRequest,
+                            );
                             if let Some(packet) = conn.process_queue() {
                                 let _ = socket.send_to(&packet[..], &conn.data_endpoint()).await;
                             }
@@ -910,7 +989,8 @@ impl KnxNetIpServer {
             KnxNetIpServiceType::RoutingIndication => {
                 let add_info_len = body[1] as usize;
                 if body.len() >= 6 + add_info_len {
-                    let src_ia = ((body[4 + add_info_len] as u16) << 8) | (body[5 + add_info_len] as u16);
+                    let src_ia =
+                        ((body[4 + add_info_len] as u16) << 8) | (body[5 + add_info_len] as u16);
                     if src_ia == self.server_ia_int {
                         return Ok(()); // Anti-Eco Multicast
                     }
@@ -919,10 +999,11 @@ impl KnxNetIpServer {
                 let cemi_start = 6;
                 if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                     let _ = self.incoming_tx.send(cemi.clone());
-                    let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
-                        .write()
-                        .unwrap()
-                        .process_cemi(&cemi);
+                    let _ =
+                        crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
+                            .write()
+                            .unwrap()
+                            .process_cemi(&cemi);
 
                     // Forward to tunnels
                     let src_ia_str = match &msg[cemi_start..] {
@@ -938,7 +1019,10 @@ impl KnxNetIpServer {
                         if conn.knx_layer == crate::core::knxnetip_enum::KnxLayer::BusmonitorLayer {
                             conn.enqueue(&busmon_body, KnxNetIpServiceType::TunnellingRequest);
                         } else {
-                            conn.enqueue(&msg[cemi_start..], KnxNetIpServiceType::TunnellingRequest);
+                            conn.enqueue(
+                                &msg[cemi_start..],
+                                KnxNetIpServiceType::TunnellingRequest,
+                            );
                         }
 
                         if let Some(packet) = conn.process_queue() {
@@ -973,7 +1057,14 @@ impl KnxNetIpServer {
         Ok(())
     }
 
-    async fn send_tunnel_ack(&self, channel_id: u8, seq: u8, status: u8, rinfo: SocketAddr, socket: &Arc<UdpSocket>) {
+    async fn send_tunnel_ack(
+        &self,
+        channel_id: u8,
+        seq: u8,
+        status: u8,
+        rinfo: SocketAddr,
+        socket: &Arc<UdpSocket>,
+    ) {
         let body = vec![0x04, channel_id, seq, status];
         let header = KnxNetIpHeader::new(
             KnxNetIpServiceType::TunnellingAck,
@@ -995,7 +1086,13 @@ impl KnxNetIpServer {
         let _ = socket.send_to(&packet[..], &dest_addr).await;
     }
 
-    async fn send_device_config_ack(&self, channel_id: u8, seq: u8, status: u8, socket: &Arc<UdpSocket>) {
+    async fn send_device_config_ack(
+        &self,
+        channel_id: u8,
+        seq: u8,
+        status: u8,
+        socket: &Arc<UdpSocket>,
+    ) {
         let body = vec![0x04, channel_id, seq, status];
         let header = KnxNetIpHeader::new(
             KnxNetIpServiceType::DeviceConfigurationAck,
@@ -1143,7 +1240,9 @@ impl KnxNetIpServer {
         let cemi = Cemi::from_buffer(cemi_bytes)?;
 
         let src_ia_str = match &cemi {
-            Cemi::LDataReq(ld) | Cemi::LDataCon(ld) | Cemi::LDataInd(ld) => ld.source_address.clone(),
+            Cemi::LDataReq(ld) | Cemi::LDataCon(ld) | Cemi::LDataInd(ld) => {
+                ld.source_address.clone()
+            }
             _ => "".to_string(),
         };
 
@@ -1197,7 +1296,8 @@ impl KnxService for KnxNetIpServer {
         *s = KnxServerState::Starting;
 
         let addr = format!("0.0.0.0:{}", self.options.port);
-        let socket = UdpSocket::bind(&addr).await
+        let socket = UdpSocket::bind(&addr)
+            .await
             .map_err(|_| KnxError::InvalidParametersForDpt)?;
 
         let socket = Arc::new(socket);
@@ -1209,8 +1309,8 @@ impl KnxService for KnxNetIpServer {
         if self.options.is_routing {
             let mcast_ip = Ipv4Addr::from_str(&self.options.ip)
                 .map_err(|_| KnxError::InvalidParametersForDpt)?;
-            let local_ip = Ipv4Addr::from_str(&self.options.local_ip)
-                .unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
+            let local_ip =
+                Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
 
             // Join multicast group
             if let Err(_) = socket.join_multicast_v4(mcast_ip, local_ip) {
@@ -1244,11 +1344,7 @@ impl KnxService for KnxNetIpServer {
                         let delay = options_pacing.routing_delay as u64;
                         let now = Instant::now();
                         let elapsed = now.duration_since(pacing.last_sent_time).as_millis() as u64;
-                        let next_wait = if elapsed < delay {
-                            delay - elapsed
-                        } else {
-                            0
-                        };
+                        let next_wait = if elapsed < delay { delay - elapsed } else { 0 };
                         (packet, next_wait)
                     };
 
@@ -1276,7 +1372,7 @@ impl KnxService for KnxNetIpServer {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(500)).await;
-                
+
                 let mut sends = Vec::new();
                 let mut channels_to_remove = Vec::new();
                 {
@@ -1320,7 +1416,8 @@ impl KnxService for KnxNetIpServer {
                         if send_disconnect {
                             let hpai = Hpai::new(
                                 HostProtocolCode::Ipv4Udp,
-                                Ipv4Addr::from_str(&options_check.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1)),
+                                Ipv4Addr::from_str(&options_check.local_ip)
+                                    .unwrap_or(Ipv4Addr::new(127, 0, 0, 1)),
                                 options_check.port,
                             );
                             let mut body = vec![cid, 0x00];
@@ -1469,7 +1566,8 @@ async fn handle_message_static(
                 return Ok(());
             }
 
-            let mut s_ip = Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
+            let mut s_ip =
+                Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
             if s_ip.is_unspecified() {
                 if let Some(ip) = get_local_ip() {
                     s_ip = ip;
@@ -1498,7 +1596,10 @@ async fn handle_message_static(
             let mut packet = res_header.to_buffer();
             packet.extend_from_slice(&res_body);
 
-            let dest = SocketAddr::new(std::net::IpAddr::V4(client_hpai.ip_address), client_hpai.port);
+            let dest = SocketAddr::new(
+                std::net::IpAddr::V4(client_hpai.ip_address),
+                client_hpai.port,
+            );
             let _ = socket.send_to(&packet[..], &dest).await;
         }
 
@@ -1508,7 +1609,8 @@ async fn handle_message_static(
                 return Ok(());
             }
 
-            let mut s_ip = Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
+            let mut s_ip =
+                Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
             if s_ip.is_unspecified() {
                 if let Some(ip) = get_local_ip() {
                     s_ip = ip;
@@ -1516,7 +1618,11 @@ async fn handle_message_static(
             }
             let server_hpai = Hpai::new(HostProtocolCode::Ipv4Udp, s_ip, ctx.options.port);
 
-            let dibs = get_identification_dibs_static(ctx, KnxNetIpServiceType::DescriptionResponse, server_hpai.ip_address);
+            let dibs = get_identification_dibs_static(
+                ctx,
+                KnxNetIpServiceType::DescriptionResponse,
+                server_hpai.ip_address,
+            );
 
             let mut res_body = Vec::new();
             for dib in dibs {
@@ -1531,7 +1637,10 @@ async fn handle_message_static(
             let mut packet = res_header.to_buffer();
             packet.extend_from_slice(&res_body);
 
-            let dest = SocketAddr::new(std::net::IpAddr::V4(client_hpai.ip_address), client_hpai.port);
+            let dest = SocketAddr::new(
+                std::net::IpAddr::V4(client_hpai.ip_address),
+                client_hpai.port,
+            );
             let _ = socket.send_to(&packet[..], &dest).await;
         }
 
@@ -1550,7 +1659,8 @@ async fn handle_message_static(
             let mut status = KnxNetIpErrorCodes::ENoError as u8;
             let mut channel_id = 0;
 
-            let mut s_ip = Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
+            let mut s_ip =
+                Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
             if s_ip.is_unspecified() {
                 if let Some(ip) = get_local_ip() {
                     s_ip = ip;
@@ -1559,7 +1669,10 @@ async fn handle_message_static(
             let server_data_hpai = Hpai::new(HostProtocolCode::Ipv4Udp, s_ip, ctx.options.port);
 
             let mut send_packet = None;
-            let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+            let dest = SocketAddr::new(
+                std::net::IpAddr::V4(client_control_hpai.ip_address),
+                client_control_hpai.port,
+            );
 
             {
                 let mut clients = ctx.clients.write().unwrap();
@@ -1568,7 +1681,9 @@ async fn handle_message_static(
                     if addr != 0 {
                         let mut stale_channel = None;
                         for (&cid, conn) in clients.iter() {
-                            if conn.knx_address == addr && conn.control_hpai.ip_address == client_control_hpai.ip_address {
+                            if conn.knx_address == addr
+                                && conn.control_hpai.ip_address == client_control_hpai.ip_address
+                            {
                                 stale_channel = Some(cid);
                                 break;
                             }
@@ -1632,8 +1747,9 @@ async fn handle_message_static(
                     }
 
                     if status == KnxNetIpErrorCodes::ENoError as u8 {
-                        let knx_address_str = KnxHelper::get_address_from_number(knx_addr, ".", false)
-                            .unwrap_or_else(|_| "0.0.0".to_string());
+                        let knx_address_str =
+                            KnxHelper::get_address_from_number(knx_addr, ".", false)
+                                .unwrap_or_else(|_| "0.0.0".to_string());
 
                         let conn = TunnelConnection::new(
                             channel_id,
@@ -1703,7 +1819,10 @@ async fn handle_message_static(
             let mut packet = res_header.to_buffer();
             packet.extend_from_slice(&res_body);
 
-            let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+            let dest = SocketAddr::new(
+                std::net::IpAddr::V4(client_control_hpai.ip_address),
+                client_control_hpai.port,
+            );
             let _ = socket.send_to(&packet[..], &dest).await;
         }
 
@@ -1729,7 +1848,10 @@ async fn handle_message_static(
             let mut packet = res_header.to_buffer();
             packet.extend_from_slice(&res_body);
 
-            let dest = SocketAddr::new(std::net::IpAddr::V4(client_control_hpai.ip_address), client_control_hpai.port);
+            let dest = SocketAddr::new(
+                std::net::IpAddr::V4(client_control_hpai.ip_address),
+                client_control_hpai.port,
+            );
             let _ = socket.send_to(&packet[..], &dest).await;
         }
 
@@ -1756,18 +1878,37 @@ async fn handle_message_static(
                         conn.close();
                         clients.remove(&channel_id);
                         flood_disconnect = Some(ep);
-                        (RequestAction::Discard, 0, crate::core::knxnetip_enum::KnxLayer::LinkLayer, 0, "".to_string())
+                        (
+                            RequestAction::Discard,
+                            0,
+                            crate::core::knxnetip_enum::KnxLayer::LinkLayer,
+                            0,
+                            "".to_string(),
+                        )
                     } else {
                         let val = conn.validate_request(seq);
-                        (val.action, val.status, conn.knx_layer, conn.knx_address, conn.data_endpoint())
+                        (
+                            val.action,
+                            val.status,
+                            conn.knx_layer,
+                            conn.knx_address,
+                            conn.data_endpoint(),
+                        )
                     }
                 } else {
-                    (RequestAction::RetransmitAck, KnxNetIpErrorCodes::EConnectionId as u8, crate::core::knxnetip_enum::KnxLayer::LinkLayer, 0, "".to_string())
+                    (
+                        RequestAction::RetransmitAck,
+                        KnxNetIpErrorCodes::EConnectionId as u8,
+                        crate::core::knxnetip_enum::KnxLayer::LinkLayer,
+                        0,
+                        "".to_string(),
+                    )
                 }
             };
 
             if let Some(control_ep) = flood_disconnect {
-                let mut s_ip = Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
+                let mut s_ip = Ipv4Addr::from_str(&ctx.options.local_ip)
+                    .unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
                 if s_ip.is_unspecified() {
                     if let Some(ip) = get_local_ip() {
                         s_ip = ip;
@@ -1806,7 +1947,9 @@ async fn handle_message_static(
             let msg_code = cemi_bytes[0];
             let add_info_len = cemi_bytes[1];
 
-            if knx_layer == crate::core::knxnetip_enum::KnxLayer::BusmonitorLayer && (msg_code == 0x11 || msg_code == 0x10) {
+            if knx_layer == crate::core::knxnetip_enum::KnxLayer::BusmonitorLayer
+                && (msg_code == 0x11 || msg_code == 0x10)
+            {
                 return Ok(());
             }
 
@@ -1814,7 +1957,8 @@ async fn handle_message_static(
             if msg_code == 0x11 {
                 let src_ia_offset = 2 + add_info_len as usize + 2;
                 if src_ia_offset + 1 < mut_cemi_bytes.len() {
-                    let src_ia = ((mut_cemi_bytes[src_ia_offset] as u16) << 8) | (mut_cemi_bytes[src_ia_offset + 1] as u16);
+                    let src_ia = ((mut_cemi_bytes[src_ia_offset] as u16) << 8)
+                        | (mut_cemi_bytes[src_ia_offset + 1] as u16);
                     if src_ia == 0 {
                         mut_cemi_bytes[src_ia_offset] = (knx_address >> 8) as u8;
                         mut_cemi_bytes[src_ia_offset + 1] = (knx_address & 0xFF) as u8;
@@ -1893,7 +2037,11 @@ async fn handle_message_static(
                     let val = conn.validate_request(seq);
                     (val.action, val.status, conn.data_endpoint())
                 } else {
-                    (RequestAction::RetransmitAck, KnxNetIpErrorCodes::EConnectionId as u8, "".to_string())
+                    (
+                        RequestAction::RetransmitAck,
+                        KnxNetIpErrorCodes::EConnectionId as u8,
+                        "".to_string(),
+                    )
                 }
             };
 
@@ -1908,14 +2056,23 @@ async fn handle_message_static(
             }
 
             if let Ok(dest_addr) = data_endpoint.parse::<SocketAddr>() {
-                send_device_config_ack_static(channel_id, seq, KnxNetIpErrorCodes::ENoError as u8, socket, dest_addr).await;
+                send_device_config_ack_static(
+                    channel_id,
+                    seq,
+                    KnxNetIpErrorCodes::ENoError as u8,
+                    socket,
+                    dest_addr,
+                )
+                .await;
             }
 
             if let Ok(cemi) = Cemi::from_buffer(cemi_bytes) {
                 if let Cemi::MPropReadReq(req) = cemi {
                     let mut data = Vec::new();
                     if req.interface_object_type == 0 && req.property_id == 1 {
-                        if let Ok(addr_buf) = KnxHelper::get_address_from_string(&ctx.options.individual_address) {
+                        if let Ok(addr_buf) =
+                            KnxHelper::get_address_from_string(&ctx.options.individual_address)
+                        {
                             data = addr_buf.to_vec();
                         }
                     }
@@ -1934,7 +2091,10 @@ async fn handle_message_static(
                     {
                         let mut clients = ctx.clients.write().unwrap();
                         if let Some(conn) = clients.get_mut(&channel_id) {
-                            conn.enqueue(&res_cemi.to_buffer(), KnxNetIpServiceType::DeviceConfigurationRequest);
+                            conn.enqueue(
+                                &res_cemi.to_buffer(),
+                                KnxNetIpServiceType::DeviceConfigurationRequest,
+                            );
                             send_packet = conn.process_queue();
                             endpoint = Some(conn.data_endpoint());
                         }
@@ -1970,7 +2130,8 @@ async fn handle_message_static(
         KnxNetIpServiceType::RoutingIndication => {
             let add_info_len = body[1] as usize;
             if body.len() >= 6 + add_info_len {
-                let src_ia = ((body[4 + add_info_len] as u16) << 8) | (body[5 + add_info_len] as u16);
+                let src_ia =
+                    ((body[4 + add_info_len] as u16) << 8) | (body[5 + add_info_len] as u16);
                 if src_ia == ctx.server_ia_int {
                     return Ok(());
                 }
@@ -2151,7 +2312,11 @@ fn handle_routing_busy_static(_socket: &Arc<UdpSocket>, ctx: &HandlerContext, bu
     }
 }
 
-fn get_identification_dibs_static(ctx: &HandlerContext, service_type: KnxNetIpServiceType, effective_local_ip: Ipv4Addr) -> Vec<Dib> {
+fn get_identification_dibs_static(
+    ctx: &HandlerContext,
+    service_type: KnxNetIpServiceType,
+    effective_local_ip: Ipv4Addr,
+) -> Vec<Dib> {
     let individual_address = KnxHelper::get_address_from_string(&ctx.options.individual_address)
         .map(|buf| ((buf[0] as u16) << 8) | buf[1] as u16)
         .unwrap_or(0);
@@ -2166,7 +2331,8 @@ fn get_identification_dibs_static(ctx: &HandlerContext, service_type: KnxNetIpSe
     };
 
     let mac_address = parse_mac(&ctx.options.mac_address).unwrap_or([0u8; 6]);
-    let routing_multicast_address = Ipv4Addr::from_str(&ctx.options.ip).unwrap_or(Ipv4Addr::new(224, 0, 23, 12));
+    let routing_multicast_address =
+        Ipv4Addr::from_str(&ctx.options.ip).unwrap_or(Ipv4Addr::new(224, 0, 23, 12));
 
     let dev_info = DeviceInformationDib {
         knx_medium: crate::core::knxnetip_enum::KnxMedium::KnxIp,
@@ -2181,18 +2347,35 @@ fn get_identification_dibs_static(ctx: &HandlerContext, service_type: KnxNetIpSe
 
     let supp_svc = SupportedServicesDib {
         services: vec![
-            crate::core::knxnetip_structures::SupportedService { family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::Core as u8, version: 1 },
-            crate::core::knxnetip_structures::SupportedService { family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::DeviceManagement as u8, version: 1 },
-            crate::core::knxnetip_structures::SupportedService { family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::Tunnelling as u8, version: 1 },
-            crate::core::knxnetip_structures::SupportedService { family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::Routing as u8, version: 1 },
-        ]
+            crate::core::knxnetip_structures::SupportedService {
+                family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::Core as u8,
+                version: 1,
+            },
+            crate::core::knxnetip_structures::SupportedService {
+                family:
+                    crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::DeviceManagement
+                        as u8,
+                version: 1,
+            },
+            crate::core::knxnetip_structures::SupportedService {
+                family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::Tunnelling
+                    as u8,
+                version: 1,
+            },
+            crate::core::knxnetip_structures::SupportedService {
+                family: crate::core::knxnetip_enum::AllowedSupportedServiceFamilies::Routing as u8,
+                version: 1,
+            },
+        ],
     };
 
     if service_type == KnxNetIpServiceType::SearchResponse {
         return vec![Dib::DeviceInfo(dev_info), Dib::SupportedServices(supp_svc)];
     }
 
-    let device_descriptor_type0 = DeviceDescriptorType0::new(crate::core::device_descriptor_type::DeviceDescriptorType0::KNXNET_IP_ROUTER.value());
+    let device_descriptor_type0 = DeviceDescriptorType0::new(
+        crate::core::device_descriptor_type::DeviceDescriptorType0::KNXNET_IP_ROUTER.value(),
+    );
     let ext_dev_info = ExtendedDeviceInformationDib {
         medium_status: false,
         maximal_local_apdu_length: 254,
@@ -2226,7 +2409,9 @@ fn get_identification_dibs_static(ctx: &HandlerContext, service_type: KnxNetIpSe
         status.set_usable(conn.is_some());
         status.set_free(conn.is_none());
         slots.push(TunnelSlot {
-            address: conn.map(|c| c.knx_address).unwrap_or(ctx.client_addrs_start_int + (i as u16) - 1),
+            address: conn
+                .map(|c| c.knx_address)
+                .unwrap_or(ctx.client_addrs_start_int + (i as u16) - 1),
             status,
         });
     }
@@ -2265,8 +2450,7 @@ fn parse_mac(mac_str: &str) -> Result<[u8; 6], KnxError> {
         return Err(KnxError::InvalidParametersForDpt);
     }
     for i in 0..6 {
-        mac[i] = u8::from_str_radix(parts[i], 16)
-            .map_err(|_| KnxError::InvalidParametersForDpt)?;
+        mac[i] = u8::from_str_radix(parts[i], 16).map_err(|_| KnxError::InvalidParametersForDpt)?;
     }
     Ok(mac)
 }
@@ -2274,7 +2458,12 @@ fn parse_mac(mac_str: &str) -> Result<[u8; 6], KnxError> {
 // Converts a cemi frame to LBusmon payload
 fn convert_data_ind_to_busmon_ind(cemi_buffer: &[u8]) -> Vec<u8> {
     let msg_code = cemi_buffer[0];
-    if msg_code != 0x29 && msg_code != 0x2d && msg_code != 0x2e && msg_code != 0x11 && msg_code != 0x10 {
+    if msg_code != 0x29
+        && msg_code != 0x2d
+        && msg_code != 0x2e
+        && msg_code != 0x11
+        && msg_code != 0x10
+    {
         return cemi_buffer.to_vec();
     }
     let add_info_len = cemi_buffer[1] as usize;
@@ -2307,5 +2496,6 @@ fn convert_data_ind_to_busmon_ind(cemi_buffer: &[u8]) -> Vec<u8> {
     Cemi::LBusmonInd(LBusmon {
         additional_info: Vec::new(),
         data: lpdu,
-    }).to_buffer()
+    })
+    .to_buffer()
 }
