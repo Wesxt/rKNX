@@ -2,80 +2,125 @@
 # Place this file at /etc/rknx/config.toml
 
 # =====================================================================
-# Configuración del Servidor KNXnet/IP (Gateway de Enrutamiento/Túnel)
+# Configuration for KNXnet/IP Server (Routing & Tunneling Gateway)
 # =====================================================================
 [server]
-# Dirección IP multicast de enrutamiento (por defecto: 224.0.23.12)
+# [Optional] Multicast routing IP address (default: "224.0.23.12")
 ip = "224.0.23.12"
 
-# Puerto estándar del bus KNXnet/IP (por defecto: 3671)
+# [Optional] Standard KNXnet/IP port (default: 3671)
 port = 3671
 
-# Dirección local de red en la que escuchará el socket (0.0.0.0 para todas las interfaces)
+# [Optional] Local network interface IP to bind to (default: "0.0.0.0" for all interfaces)
 local_ip = "0.0.0.0"
 
-# Dirección Física Individual (IA) que tendrá el servidor/gateway
+# [Required] Individual Physical Address (IA) assigned to the Server/Gateway
 individual_address = "1.1.0"
 
-# Nombre amigable visible para herramientas KNX como ETS
+# [Optional] Friendly name visible to KNX commissioning tools like ETS (default: "rKNX Server")
 friendly_name = "rKNX Server Gateway"
 
-# Dirección MAC física del host del servidor
+# [Optional] MAC address of the host machine (default: "00:11:22:33:44:55")
 mac_address = "00:11:22:33:44:55"
 
-# Retardo de enrutamiento para evitar saturación de red (en milisegundos)
+# [Optional] Pacing delay for routing multicast telegrams in milliseconds (default: 10)
 routing_delay = 10
 
-# Rango de direcciones físicas para los túneles clientes
-# Formato: "dirección_inicial:máximo_conexiones"
+# [Optional] Client IP address range start and max connection capacity
+# Format: "start_address:max_connections" (default: "1.1.1:15")
 client_addrs = "1.1.1:15"
 
-# Activar la difusión/enrutamiento de tramas por multicast
+# [Optional] Enable routing packets over multicast (default: true)
 is_routing = true
 
-# Utilizar todas las interfaces de red disponibles
+# [Optional] Bind to all active interfaces instead of just the primary one (default: false)
 use_all_interfaces = false
 
 # =====================================================================
-# Configuración del Cliente KNXnet/IP (Conexión a un Gateway externo)
+# Configuration for KNXnet/IP Tunneling Client (Connects to an external Gateway)
 # =====================================================================
 [client]
-# Dirección IP de la pasarela o gateway KNX remota
+# [Required] Remote KNXnet/IP gateway IP address
 gateway_host = "192.168.1.10"
 
-# Puerto de la pasarela KNX remota (por defecto: 3671)
+# [Optional] Remote KNXnet/IP gateway port (default: 3671)
 gateway_port = 3671
 
-# Dirección IP local de salida (Opcional)
-local_ip = "0.0.0.0"
+# [Optional] Local binding IP address (leave blank/commented for automatic selection)
+# local_ip = "0.0.0.0"
 
-# Puerto local de salida (0 para asignación dinámica)
+# [Optional] Local binding port (default: 0 for dynamic port allocation)
 local_port = 0
 
-# Protocolo de transporte para el túnel ("Udp" o "Tcp")
+# [Optional] Network transport protocol to use: "Udp" or "Tcp" (default: "Udp")
 transport = "Udp"
 
-# Tipo de conexión ("TunnelConnection" o "DeviceMgmtConnection")
+# [Optional] Connection channel type: "TunnelConnection" or "DeviceMgmtConnection" (default: "TunnelConnection")
 connection_type = "TunnelConnection"
 
-# Usar el encabezado HPAI con dirección 0.0.0.0 y puerto 0 (NAT Traversal / Route Back)
+# [Optional] Enable NAT traversal / NAT route-back mode (default: false)
 use_route_back = false
 
-# Tamaño máximo de la cola de tramas de salida
+# [Optional] Outgoing message transmission queue size (default: 100)
 max_queue_size = 100
 
-# Reconexión automática en caso de pérdida de enlace
+# [Optional] Auto-reconnect on connection loss (default: true)
 auto_reconnect = true
 
-# Número máximo de intentos de reconexión
+# [Optional] Maximum reconnection retry attempts (default: 10)
 max_reconnect_attempts = 10
 
-# Retardo entre cada intento de reconexión (en milisegundos)
+# [Optional] Milliseconds to wait between reconnection attempts (default: 5000)
 reconnect_delay_ms = 5000
 
 # =====================================================================
-# Configuración del Registro de Logs (Logging)
+# Configuration for KNXnet/IP Router Interface (Optional)
+# =====================================================================
+[router]
+# [Required] Individual Physical Address (IA) assigned to the Router
+individual_address = "1.0.2"
+
+# [Optional] Enable single individual address mode (default: false)
+use_single_ia = false
+
+# [Optional] Handle and validate routing hop count (default: false)
+handle_hop_count = false
+
+# =====================================================================
+# Configuration for KNX USB Interface (Optional)
+# =====================================================================
+[usb]
+# [Optional] Serial/device path of the USB device (e.g. "/dev/hidraw0")
+# path = "/dev/hidraw0"
+
+# [Optional] USB device vendor ID (default: MDT, Siemens, Zennio autodetect if not set)
+vendor_id = 10434  # Decimal for Zennio (0x28c2)
+
+# [Optional] USB device product ID
+product_id = 1
+
+# [Required] Individual Physical Address (IA) assigned to the USB connection
+individual_address = "1.0.3"
+
+# =====================================================================
+# Configuration for KNX TPUART Serial Interface (Optional)
+# =====================================================================
+[tpuart]
+# [Required] Path to the serial device interface
+path = "/dev/ttyAMA0"
+
+# [Optional] Auto positive ACK group address telegrams (default: false)
+ack_group = false
+
+# [Optional] Auto positive ACK individual address telegrams (default: false)
+ack_individual = false
+
+# [Required] Individual Physical Address (IA) assigned to the TPUART connection
+individual_address = "1.0.4"
+
+# =====================================================================
+# Logging Configuration
 # =====================================================================
 [logging]
-# Nivel de detalle: "error", "warn", "info", "debug", "trace"
+# [Optional] Print logger output detail level: "error", "warn", "info", "debug", "trace" (default: "info")
 level = "info"
