@@ -19,6 +19,7 @@ async fn main() {
         serial_number: None,
         use_all_interfaces: false,
         is_routing: false,
+        max_pending_requests_per_client: 100,
     };
     let router = KnxNetIpServer::new(options_fixed);
     let mut sub = router.subscribe();

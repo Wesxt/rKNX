@@ -52,6 +52,7 @@ pub struct KnxNetIpServerOptions {
     pub serial_number: Option<Vec<u8>>,
     pub use_all_interfaces: bool,
     pub is_routing: bool,
+    pub max_pending_requests_per_client: u32,
 }
 
 /// Multicast pacing queue and flow control state.
@@ -726,7 +727,7 @@ impl KnxNetIpServer {
                         conn.rx_count += 1;
 
                         // Terminate if client is flooding
-                        let flood_threshold = 100;
+                        let flood_threshold = self.options.max_pending_requests_per_client;
                         if flood_threshold > 0 && conn.rx_count > flood_threshold {
                             conn.close();
                             clients.remove(&channel_id);

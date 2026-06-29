@@ -24,6 +24,7 @@ async fn test_router_receives_routing_indication() {
         serial_number: None,
         use_all_interfaces: false,
         is_routing: false,
+        max_pending_requests_per_client: 100,
     };
 
     let router = KnxNetIpServer::new(options);
@@ -43,6 +44,7 @@ async fn test_router_receives_routing_indication() {
         serial_number: None,
         use_all_interfaces: false,
         is_routing: false,
+        max_pending_requests_per_client: 100,
     };
     let router = KnxNetIpServer::new(options_fixed);
     let mut sub = router.subscribe();
@@ -118,6 +120,7 @@ async fn test_router_sends_routing_indication() {
         serial_number: None,
         use_all_interfaces: false,
         is_routing: false,
+        max_pending_requests_per_client: 100,
     };
 
     let router = KnxNetIpServer::new(options);

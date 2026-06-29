@@ -40,6 +40,9 @@ is_routing = true
 # [Optional] Bind to all active interfaces instead of just the primary one (default: false)
 use_all_interfaces = false
 
+# [Optional] Max pending request messages allowed per second per client (default: 100). Set to less than 1 to disable rate limit.
+max_pending_requests_per_client = 100
+
 # =====================================================================
 # Configuration for KNXnet/IP Tunneling Client (Connects to an external Gateway)
 # =====================================================================

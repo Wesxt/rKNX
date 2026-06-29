@@ -16,6 +16,7 @@ pub struct ServerConfig {
     pub client_addrs: Option<String>,
     pub use_all_interfaces: Option<bool>,
     pub is_routing: Option<bool>,
+    pub max_pending_requests_per_client: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -66,6 +67,7 @@ impl Config {
             serial_number: None,
             use_all_interfaces: sc.use_all_interfaces.unwrap_or(false),
             is_routing: sc.is_routing.unwrap_or(true),
+            max_pending_requests_per_client: sc.max_pending_requests_per_client.unwrap_or(100),
         })
     }
 
