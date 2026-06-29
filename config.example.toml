@@ -1,0 +1,81 @@
+# rKNX Daemon Configuration File Example
+# Place this file at /etc/rknx/config.toml
+
+# =====================================================================
+# Configuración del Servidor KNXnet/IP (Gateway de Enrutamiento/Túnel)
+# =====================================================================
+[server]
+# Dirección IP multicast de enrutamiento (por defecto: 224.0.23.12)
+ip = "224.0.23.12"
+
+# Puerto estándar del bus KNXnet/IP (por defecto: 3671)
+port = 3671
+
+# Dirección local de red en la que escuchará el socket (0.0.0.0 para todas las interfaces)
+local_ip = "0.0.0.0"
+
+# Dirección Física Individual (IA) que tendrá el servidor/gateway
+individual_address = "1.1.0"
+
+# Nombre amigable visible para herramientas KNX como ETS
+friendly_name = "rKNX Server Gateway"
+
+# Dirección MAC física del host del servidor
+mac_address = "00:11:22:33:44:55"
+
+# Retardo de enrutamiento para evitar saturación de red (en milisegundos)
+routing_delay = 10
+
+# Rango de direcciones físicas para los túneles clientes
+# Formato: "dirección_inicial:máximo_conexiones"
+client_addrs = "1.1.1:15"
+
+# Activar la difusión/enrutamiento de tramas por multicast
+is_routing = true
+
+# Utilizar todas las interfaces de red disponibles
+use_all_interfaces = false
+
+# =====================================================================
+# Configuración del Cliente KNXnet/IP (Conexión a un Gateway externo)
+# =====================================================================
+[client]
+# Dirección IP de la pasarela o gateway KNX remota
+gateway_host = "192.168.1.10"
+
+# Puerto de la pasarela KNX remota (por defecto: 3671)
+gateway_port = 3671
+
+# Dirección IP local de salida (Opcional)
+local_ip = "0.0.0.0"
+
+# Puerto local de salida (0 para asignación dinámica)
+local_port = 0
+
+# Protocolo de transporte para el túnel ("Udp" o "Tcp")
+transport = "Udp"
+
+# Tipo de conexión ("TunnelConnection" o "DeviceMgmtConnection")
+connection_type = "TunnelConnection"
+
+# Usar el encabezado HPAI con dirección 0.0.0.0 y puerto 0 (NAT Traversal / Route Back)
+use_route_back = false
+
+# Tamaño máximo de la cola de tramas de salida
+max_queue_size = 100
+
+# Reconexión automática en caso de pérdida de enlace
+auto_reconnect = true
+
+# Número máximo de intentos de reconexión
+max_reconnect_attempts = 10
+
+# Retardo entre cada intento de reconexión (en milisegundos)
+reconnect_delay_ms = 5000
+
+# =====================================================================
+# Configuración del Registro de Logs (Logging)
+# =====================================================================
+[logging]
+# Nivel de detalle: "error", "warn", "info", "debug", "trace"
+level = "info"
