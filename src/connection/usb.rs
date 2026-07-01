@@ -1,26 +1,20 @@
-//! KNX USB HID Connection
-//!
-//! Port of [KNXUSBConnection.ts](file:///f:/Proyectos/KNX.ts/src/connection/KNXUSBConnection.ts).
-//!
-//! Requires the `usb` feature flag (`cargo build --features usb`).
-
 #[cfg(feature = "usb")]
 use hidapi::HidApi;
 
-use std::sync::{Arc, RwLock};
 #[cfg(feature = "usb")]
 use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 
-use tokio::sync::{broadcast, mpsc};
 #[cfg(feature = "usb")]
 use tokio::sync::oneshot;
+use tokio::sync::{broadcast, mpsc};
 #[cfg(feature = "usb")]
 use tokio::time::Duration;
 
-use crate::core::cemi::Cemi;
-use crate::core::cache::group_address_cache::GroupAddressCache;
-use crate::errors::KnxError;
 use super::KnxService;
+use crate::core::cache::group_address_cache::GroupAddressCache;
+use crate::core::cemi::Cemi;
+use crate::errors::KnxError;
 use crate::utils::logger::Logger;
 /// Known KNX USB device vendor IDs.
 pub const KNX_USB_VENDOR_IDS: &[u16] = &[
@@ -77,7 +71,7 @@ pub struct KnxUsbConnection {
     #[allow(dead_code)]
     send_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<Vec<u8>>>>>,
     logger: Logger,
-    
+
     #[cfg(feature = "usb")]
     shutdown_tx: Arc<Mutex<Option<broadcast::Sender<()>>>>,
 }
@@ -96,7 +90,7 @@ impl KnxUsbConnection {
             send_tx,
             send_rx: Arc::new(tokio::sync::Mutex::new(Some(send_rx))),
             logger,
-            
+
             #[cfg(feature = "usb")]
             shutdown_tx: Arc::new(Mutex::new(None)),
         }
@@ -195,19 +189,32 @@ impl KnxService for KnxUsbConnection {
             return Ok(());
         }
 
+        self.logger.info("Opening KNX USB device...");
+
         #[cfg(feature = "usb")]
         {
-            let api = HidApi::new().map_err(|_| KnxError::InvalidParametersForDpt)?;
+            let api = HidApi::new().map_err(|e| {
+                self.logger.error(&format!("Failed to initialize HidApi: {:?}", e));
+                KnxError::Io(e.to_string())
+            })?;
 
             // Resolve and open HID device
             let device = if let Some(ref path) = self.options.path {
-                let c_path = std::ffi::CString::new(path.as_str()).map_err(|_| KnxError::InvalidParametersForDpt)?;
-                api.open_path(&c_path).map_err(|_| KnxError::InvalidParametersForDpt)?
+                self.logger.info(&format!("Opening KNX USB device at path: {}", path));
+                let c_path = std::ffi::CString::new(path.as_str())
+                    .map_err(|_| KnxError::InvalidParametersForDpt)?;
+                api.open_path(&c_path)
+                    .map_err(|e| {
+                        self.logger.error(&format!("Failed to open device at path: {:?}", e));
+                        KnxError::Io(e.to_string())
+                    })?
             } else {
                 let devices = api.device_list();
                 let knx_device = devices
                     .filter(|d| {
-                        if let (Some(vid), Some(pid)) = (self.options.vendor_id, self.options.product_id) {
+                        if let (Some(vid), Some(pid)) =
+                            (self.options.vendor_id, self.options.product_id)
+                        {
                             return d.vendor_id() == vid && d.product_id() == pid;
                         }
                         KNX_USB_VENDOR_IDS.contains(&d.vendor_id())
@@ -216,16 +223,29 @@ impl KnxService for KnxUsbConnection {
                                 .unwrap_or(false)
                     })
                     .next()
-                    .ok_or(KnxError::InvalidParametersForDpt)?;
+                    .ok_or_else(|| {
+                        self.logger.error("No KNX USB device found");
+                        KnxError::Protocol("No KNX USB device found".to_string())
+                    })?;
 
-                api.open_path(knx_device.path()).map_err(|_| KnxError::InvalidParametersForDpt)?
+                self.logger.info(&format!(
+                    "Found device: VID=0x{:04x}, PID=0x{:04x}",
+                    knx_device.vendor_id(),
+                    knx_device.product_id()
+                ));
+
+                api.open_path(knx_device.path())
+                    .map_err(|e| {
+                        self.logger.error(&format!("Failed to open device path: {:?}", e));
+                        KnxError::Io(e.to_string())
+                    })?
             };
 
             let device_arc = Arc::new(Mutex::new(device));
 
             let (discovery_tx, discovery_rx) = oneshot::channel::<EmiType>();
             let discovery_sender = Arc::new(Mutex::new(Some(discovery_tx)));
-            
+
             let (shutdown_tx, _) = broadcast::channel::<()>(1);
             {
                 let mut sd_guard = self.shutdown_tx.lock().unwrap();
@@ -244,7 +264,9 @@ impl KnxService for KnxUsbConnection {
             let mut shutdown_rx1 = shutdown_tx.subscribe();
             tokio::spawn(async move {
                 let mut buf = [0u8; 64];
-                let wanted = [0x01, 0x13, 0x0a, 0x00, 0x08, 0x00, 0x02, 0x0f, 0x04, 0x00, 0x00, 0x03];
+                let wanted = [
+                    0x01, 0x13, 0x0a, 0x00, 0x08, 0x00, 0x02, 0x0f, 0x04, 0x00, 0x00, 0x03,
+                ];
 
                 loop {
                     tokio::select! {
@@ -261,7 +283,7 @@ impl KnxService for KnxUsbConnection {
                                 Ok(0) => {}
                                 Ok(n) => {
                                     let data = &buf[..n];
-                                    
+
                                     // Bus connection state check
                                     if data.len() >= 12 && data[..12] == wanted {
                                         let is_connected_to_bus = (data[12] & 0x01) == 1;
@@ -364,7 +386,8 @@ impl KnxService for KnxUsbConnection {
             }
 
             // Set active EMI type on device
-            let active_cmd = KnxUsbConnection::build_usb_transfer(0x0f, 0x03, &[0x05, negotiated_emi as u8]);
+            let active_cmd =
+                KnxUsbConnection::build_usb_transfer(0x0f, 0x03, &[0x05, negotiated_emi as u8]);
             let active_report = KnxUsbConnection::build_hid_report(&active_cmd);
             let _ = device_arc.lock().unwrap().write(&active_report);
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -389,12 +412,14 @@ impl KnxService for KnxUsbConnection {
                 *s = KnxUsbState::Connected;
             }
 
+            self.logger.info("Connected to KNX USB device successfully.");
+
             return Ok(());
         }
 
         #[cfg(not(feature = "usb"))]
         {
-            Err(KnxError::InvalidParametersForDpt)
+            Err(KnxError::Protocol("USB feature is not enabled".to_string()))
         }
     }
 
@@ -404,6 +429,8 @@ impl KnxService for KnxUsbConnection {
             return Ok(());
         }
         *s = KnxUsbState::Disconnected;
+
+        self.logger.info("Disconnected from KNX USB device.");
 
         {
             let mut bc = self.bus_connected.write().unwrap();
@@ -432,7 +459,7 @@ impl KnxService for KnxUsbConnection {
             .process_cemi(cemi);
 
         let frame = cemi.to_buffer();
-        
+
         let emi_frame = {
             let emi_type = *self.supported_emi_type.read().unwrap();
             if emi_type == EmiType::CEmi {
@@ -454,7 +481,9 @@ impl KnxService for KnxUsbConnection {
             return Err(KnxError::InvalidParametersForDpt);
         }
 
-        self.send_tx.send(report).await
+        self.send_tx
+            .send(report)
+            .await
             .map_err(|_| KnxError::InvalidParametersForDpt)
     }
 

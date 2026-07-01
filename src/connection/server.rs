@@ -1299,10 +1299,15 @@ impl KnxService for KnxNetIpServer {
         }
         *s = KnxServerState::Starting;
 
+        self.logger.info("Starting KNXnet/IP server...");
+
         let addr = format!("0.0.0.0:{}", self.options.port);
         let socket = UdpSocket::bind(&addr)
             .await
-            .map_err(|e| KnxError::Io(e.to_string()))?;
+            .map_err(|e| {
+                self.logger.error(&format!("Failed to bind to UDP port {}: {:?}", self.options.port, e));
+                KnxError::Io(e.to_string())
+            })?;
 
         let socket = Arc::new(socket);
         {
@@ -1478,6 +1483,7 @@ impl KnxService for KnxNetIpServer {
         });
 
         *self.state.write().unwrap() = KnxServerState::Running;
+        self.logger.info(&format!("KNXnet/IP server started and listening on 0.0.0.0:{}", self.options.port));
         Ok(())
     }
 
@@ -1487,6 +1493,8 @@ impl KnxService for KnxNetIpServer {
             return Ok(());
         }
         *s = KnxServerState::Stopped;
+
+        self.logger.info("Stopping KNXnet/IP server...");
 
         {
             let mut socket_guard = self.udp_socket.write().unwrap();
@@ -1500,6 +1508,8 @@ impl KnxService for KnxNetIpServer {
 
         let mut pacing = self.multicast_pacing.lock().unwrap();
         pacing.msg_queue.clear();
+
+        self.logger.info("KNXnet/IP server stopped.");
 
         Ok(())
     }

@@ -1,32 +1,26 @@
-//! KNX TPUART Serial Connection
-//!
-//! Port of [TPUART.ts](file:///f:/Proyectos/KNX.ts/src/connection/TPUART.ts).
-//!
-//! Requires the `serial` feature flag (`cargo build --features serial`).
-
-#[cfg(feature = "serial")]
-use tokio_serial::SerialPortBuilderExt;
 #[cfg(feature = "serial")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[cfg(feature = "serial")]
+use tokio_serial::SerialPortBuilderExt;
 
-use std::sync::{Arc, RwLock};
 #[cfg(feature = "serial")]
 use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 
-use tokio::sync::{broadcast, mpsc};
 #[cfg(feature = "serial")]
 use tokio::sync::oneshot;
+use tokio::sync::{broadcast, mpsc};
 
 #[cfg(feature = "serial")]
 use tokio::time::{Duration, Instant};
 
-use crate::core::cemi::Cemi;
-use crate::core::cache::group_address_cache::GroupAddressCache;
-use crate::errors::KnxError;
 use super::KnxService;
-use crate::utils::logger::Logger;
+use crate::core::cache::group_address_cache::GroupAddressCache;
+use crate::core::cemi::Cemi;
+use crate::errors::KnxError;
 #[cfg(feature = "serial")]
 use crate::utils::knx_helper::KnxHelper;
+use crate::utils::logger::Logger;
 
 pub const UART_SERVICES_RESET_REQ: u8 = 0x01;
 pub const UART_SERVICES_RESET_IND: u8 = 0x03;
@@ -74,7 +68,7 @@ pub struct TpuartConnection {
     #[allow(dead_code)]
     send_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<Vec<u8>>>>>,
     logger: Logger,
-    
+
     // Background task channel handles
     #[cfg(feature = "serial")]
     raw_write_tx: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
@@ -99,7 +93,7 @@ impl TpuartConnection {
             send_tx,
             send_rx: Arc::new(tokio::sync::Mutex::new(Some(send_rx))),
             logger,
-            
+
             #[cfg(feature = "serial")]
             raw_write_tx: Arc::new(Mutex::new(None)),
             #[cfg(feature = "serial")]
@@ -191,7 +185,9 @@ impl TpuartReceiver {
         }
 
         // Inter-byte timeout (1000ms) to reset buffer if sync is lost
-        if !self.buffer.is_empty() && now.duration_since(self.last_read) > Duration::from_millis(1000) {
+        if !self.buffer.is_empty()
+            && now.duration_since(self.last_read) > Duration::from_millis(1000)
+        {
             self.buffer.clear();
         }
 
@@ -262,7 +258,9 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
         if *state_guard == TpuartState::ResetWait {
             *state_guard = TpuartState::SetAddrWait;
 
-            if let Ok(addr_buf) = KnxHelper::get_address_from_string(&ctx.options.individual_address) {
+            if let Ok(addr_buf) =
+                KnxHelper::get_address_from_string(&ctx.options.individual_address)
+            {
                 let mut set_addr_cmd = vec![0x28];
                 set_addr_cmd.extend_from_slice(&addr_buf);
                 let _ = ctx.raw_write_tx.try_send(set_addr_cmd);
@@ -311,6 +309,8 @@ impl KnxService for TpuartConnection {
             return Ok(());
         }
 
+        self.logger.info(&format!("Initializing TPUART serial connection at {}...", self.options.path));
+
         #[cfg(feature = "serial")]
         {
             let port = tokio_serial::new(&self.options.path, 19200)
@@ -318,7 +318,10 @@ impl KnxService for TpuartConnection {
                 .parity(tokio_serial::Parity::Even)
                 .stop_bits(tokio_serial::StopBits::One)
                 .open_native_async()
-                .map_err(|_| KnxError::InvalidParametersForDpt)?;
+                .map_err(|e| {
+                    self.logger.error(&format!("Failed to open serial port: {:?}", e));
+                    KnxError::Io(e.to_string())
+                })?;
 
             let (mut reader, mut writer) = tokio::io::split(port);
             let (raw_write_tx, mut raw_write_rx) = mpsc::channel::<Vec<u8>>(100);
@@ -536,25 +539,28 @@ impl KnxService for TpuartConnection {
                                 }
                             });
 
+                            self.logger.info("TPUART connection initialized successfully.");
                             return Ok(());
                         }
                         _ => {
                             let mut state_g = self.state.write().unwrap();
                             *state_g = TpuartState::Error;
-                            return Err(KnxError::InvalidParametersForDpt);
+                            self.logger.error("TPUART handshake failed.");
+                            return Err(KnxError::Protocol("Handshake failed".to_string()));
                         }
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_secs(5)) => {
                     let mut state_g = self.state.write().unwrap();
                     *state_g = TpuartState::Error;
-                    return Err(KnxError::InvalidParametersForDpt);
+                    self.logger.error("TPUART handshake timed out after 5 seconds.");
+                    return Err(KnxError::Timeout);
                 }
             }
         }
         #[cfg(not(feature = "serial"))]
         {
-            Err(KnxError::InvalidParametersForDpt)
+            Err(KnxError::Protocol("Serial feature is not enabled".to_string()))
         }
     }
 
@@ -564,6 +570,8 @@ impl KnxService for TpuartConnection {
             return Ok(());
         }
         *state_g = TpuartState::Disconnected;
+
+        self.logger.info("Disconnected from TPUART serial interface.");
 
         #[cfg(feature = "serial")]
         {
@@ -578,7 +586,7 @@ impl KnxService for TpuartConnection {
 
     async fn send(&self, cemi: &Cemi) -> Result<(), KnxError> {
         if *self.state.read().unwrap() != TpuartState::Online {
-            return Err(KnxError::InvalidParametersForDpt);
+            return Err(KnxError::Protocol("TPUART connection is not online".to_string()));
         }
 
         let _ = GroupAddressCache::get_instance()
@@ -588,7 +596,7 @@ impl KnxService for TpuartConnection {
 
         // Convert to EMI for TPUART
         let frame = cemi.to_buffer();
-        
+
         // Remove 0x29 (L_Data.ind) or 0x11 (L_Data.req) message code if present
         let emi_frame = if !frame.is_empty() {
             frame[1..].to_vec()
@@ -596,7 +604,9 @@ impl KnxService for TpuartConnection {
             frame
         };
 
-        self.send_tx.send(emi_frame).await
+        self.send_tx
+            .send(emi_frame)
+            .await
             .map_err(|_| KnxError::InvalidParametersForDpt)
     }
 
@@ -657,7 +667,7 @@ mod tests {
     fn test_echo_cancellation_logic() {
         // Echo cancellation (knxd pattern: ignore repeat bit 0x20)
         let last_sent = vec![0xBC, 0xE0, 0x11, 0x01, 0x09, 0x02, 0x01, 0x00, 0x81];
-        
+
         // Exact match
         let exact = vec![0xBC, 0xE0, 0x11, 0x01, 0x09, 0x02, 0x01, 0x00, 0x81];
         assert!(TpuartConnection::is_echo(&last_sent, &exact));
