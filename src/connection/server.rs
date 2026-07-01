@@ -862,6 +862,8 @@ impl KnxNetIpServer {
 
                 if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                     let _ = self.incoming_tx.send(cemi.clone());
+                    self.logger.log_indication(&cemi);
+                    self.logger.log_indication_raw(&mut_cemi_bytes);
                     let _ =
                         crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
                             .write()
@@ -1014,6 +1016,8 @@ impl KnxNetIpServer {
                 let cemi_start = 6;
                 if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                     let _ = self.incoming_tx.send(cemi.clone());
+                    self.logger.log_indication(&cemi);
+                    self.logger.log_indication_raw(&msg[cemi_start..]);
                     let _ =
                         crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
                             .write()
@@ -1059,10 +1063,13 @@ impl KnxNetIpServer {
 
             KnxNetIpServiceType::RoutingLostMessage => {
                 if let Ok(lost) = RoutingLostMessage::from_buffer(body) {
-                    let _ = self.incoming_tx.send(Cemi::LBusmonInd(LBusmon {
+                    let cemi = Cemi::LBusmonInd(LBusmon {
                         additional_info: Vec::new(),
                         data: lost.to_buffer(),
-                    }));
+                    });
+                    let _ = self.incoming_tx.send(cemi.clone());
+                    self.logger.log_indication(&cemi);
+                    self.logger.log_indication_raw(body);
                 }
             }
 
@@ -1481,6 +1488,7 @@ impl KnxService for KnxNetIpServer {
             multicast_pacing: Arc::clone(&self.multicast_pacing),
             pacing_notify: Arc::clone(&self.pacing_notify),
             udp_socket: Arc::clone(&self.udp_socket),
+            logger: self.logger.clone(),
         });
 
         let ctx_cloned = Arc::clone(&ctx);
@@ -1584,6 +1592,7 @@ struct HandlerContext {
     pacing_notify: Arc<tokio::sync::Notify>,
     #[allow(dead_code)]
     udp_socket: Arc<RwLock<Option<Arc<UdpSocket>>>>,
+    logger: Logger,
 }
 
 async fn handle_message_static(
@@ -2017,6 +2026,8 @@ async fn handle_message_static(
 
             if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                 let _ = ctx.incoming_tx.send(cemi.clone());
+                ctx.logger.log_indication(&cemi);
+                ctx.logger.log_indication_raw(&mut_cemi_bytes);
                 let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
                     .write()
                     .unwrap()
@@ -2189,6 +2200,8 @@ async fn handle_message_static(
             let cemi_start = 6;
             if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                 let _ = ctx.incoming_tx.send(cemi.clone());
+                ctx.logger.log_indication(&cemi);
+                ctx.logger.log_indication_raw(&msg[cemi_start..]);
                 let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
                     .write()
                     .unwrap()
@@ -2227,10 +2240,13 @@ async fn handle_message_static(
 
         KnxNetIpServiceType::RoutingLostMessage => {
             if let Ok(lost) = RoutingLostMessage::from_buffer(body) {
-                let _ = ctx.incoming_tx.send(Cemi::LBusmonInd(LBusmon {
+                let cemi = Cemi::LBusmonInd(LBusmon {
                     additional_info: Vec::new(),
                     data: lost.to_buffer(),
-                }));
+                });
+                let _ = ctx.incoming_tx.send(cemi.clone());
+                ctx.logger.log_indication(&cemi);
+                ctx.logger.log_indication_raw(body);
             }
         }
 

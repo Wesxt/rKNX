@@ -2,6 +2,8 @@ use std::sync::{RwLock, OnceLock};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use crate::core::cemi::Cemi;
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
@@ -41,16 +43,26 @@ pub struct LoggerOptions {
     pub log_to_file: bool,
     pub log_dir: String,
     pub log_filename: String,
+    pub indication_tx: broadcast::Sender<Cemi>,
+    pub indication_raw_tx: broadcast::Sender<Vec<u8>>,
+    pub indications: bool,
+    pub indications_raw: bool,
 }
 
 impl Default for LoggerOptions {
     fn default() -> Self {
+        let (indication_tx, _) = broadcast::channel(256);
+        let (indication_raw_tx, _) = broadcast::channel(256);
         Self {
             level: LogLevel::Info,
             enabled: true,
             log_to_file: false,
             log_dir: "./logs".to_string(),
             log_filename: String::new(),
+            indication_tx,
+            indication_raw_tx,
+            indications: false,
+            indications_raw: false,
         }
     }
 }
@@ -66,6 +78,8 @@ pub fn setup_logger(
     log_to_file: Option<bool>,
     log_dir: Option<String>,
     log_filename: Option<String>,
+    indications: Option<bool>,
+    indications_raw: Option<bool>,
 ) {
     let mut opts = global_options().write().unwrap();
     if let Some(l) = level {
@@ -80,6 +94,20 @@ pub fn setup_logger(
     if let Some(lf) = log_filename {
         opts.log_filename = lf;
     }
+    if let Some(ind) = indications {
+        opts.indications = ind;
+    }
+    if let Some(ind_raw) = indications_raw {
+        opts.indications_raw = ind_raw;
+    }
+}
+
+pub fn subscribe_indication() -> broadcast::Receiver<Cemi> {
+    global_options().read().unwrap().indication_tx.subscribe()
+}
+
+pub fn subscribe_indication_raw() -> broadcast::Receiver<Vec<u8>> {
+    global_options().read().unwrap().indication_raw_tx.subscribe()
 }
 
 #[derive(Clone, Debug)]
@@ -179,6 +207,23 @@ impl Logger {
     pub fn error(&self, msg: &str) { self.dispatch(LogLevel::Error, msg); }
     pub fn fatal(&self, msg: &str) { self.dispatch(LogLevel::Error, msg); }
     pub fn trace(&self, msg: &str) { self.dispatch(LogLevel::Debug, msg); }
+
+    pub fn log_indication(&self, cemi: &Cemi) {
+        let opts = global_options().read().unwrap();
+        let _ = opts.indication_tx.send(cemi.clone());
+        if opts.indications {
+            self.info(&format!("INDICATION: {:?}", cemi));
+        }
+    }
+
+    pub fn log_indication_raw(&self, data: &[u8]) {
+        let opts = global_options().read().unwrap();
+        let _ = opts.indication_raw_tx.send(data.to_vec());
+        if opts.indications_raw {
+            let hex_str = data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<String>>().join(" ");
+            self.info(&format!("INDICATION RAW: {}", hex_str));
+        }
+    }
 }
 
 fn strip_ansi_escapes(s: &str) -> String {

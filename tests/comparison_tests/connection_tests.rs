@@ -190,3 +190,53 @@ async fn test_tunneling_client_state_lifecycle() {
 
     let _ = handle.await;
 }
+
+#[tokio::test]
+async fn test_logger_indication_subscription() {
+    use rknx::utils::logger::{Logger, setup_logger, subscribe_indication, subscribe_indication_raw};
+    use rknx::core::cemi::Cemi;
+
+    // Enable direct indications logging in the configuration
+    setup_logger(
+        None,
+        None,
+        None,
+        None,
+        Some(true),
+        Some(true),
+    );
+
+    let mut rx_ind = subscribe_indication();
+    let mut rx_raw = subscribe_indication_raw();
+
+    let logger = Logger::new("Test");
+    let test_cemi = Cemi::LBusmonInd(rknx::core::cemi::LBusmon {
+        additional_info: Vec::new(),
+        data: vec![1, 2, 3],
+    });
+
+    logger.log_indication(&test_cemi);
+    logger.log_indication_raw(&[1, 2, 3]);
+
+    let received_cemi = rx_ind.recv().await.unwrap();
+    let received_raw = rx_raw.recv().await.unwrap();
+
+    assert_eq!(received_raw, vec![1, 2, 3]);
+    match received_cemi {
+        Cemi::LBusmonInd(busmon) => {
+            assert_eq!(busmon.data, vec![1, 2, 3]);
+        }
+        _ => panic!("Expected LBusmonInd"),
+    }
+
+    // Reset options
+    setup_logger(
+        None,
+        None,
+        None,
+        None,
+        Some(false),
+        Some(false),
+    );
+}
+

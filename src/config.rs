@@ -40,6 +40,8 @@ pub struct LoggingConfig {
     pub log_to_file: Option<bool>,
     pub log_dir: Option<String>,
     pub log_filename: Option<String>,
+    pub indications: Option<bool>,
+    pub indications_raw: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -181,6 +181,7 @@ struct UsbReaderContext {
     bus_connected: Arc<RwLock<bool>>,
     supported_emi_type: Arc<RwLock<EmiType>>,
     discovery_tx: Arc<Mutex<Option<oneshot::Sender<EmiType>>>>,
+    logger: Logger,
 }
 
 impl KnxService for KnxUsbConnection {
@@ -264,6 +265,7 @@ impl KnxService for KnxUsbConnection {
                 bus_connected: Arc::clone(&self.bus_connected),
                 supported_emi_type: Arc::clone(&self.supported_emi_type),
                 discovery_tx: Arc::clone(&discovery_sender),
+                logger: self.logger.clone(),
             });
 
             // 1. Spawning Reader Loop Task
@@ -317,6 +319,8 @@ impl KnxService for KnxUsbConnection {
                                                 if current_emi_type == EmiType::CEmi {
                                                     if let Ok(cemi) = Cemi::from_buffer(&payload) {
                                                         let _ = reader_ctx.incoming_tx.send(cemi.clone());
+                                                        reader_ctx.logger.log_indication(&cemi);
+                                                        reader_ctx.logger.log_indication_raw(&payload);
                                                         let _ = GroupAddressCache::get_instance()
                                                             .write()
                                                             .unwrap()
@@ -325,6 +329,8 @@ impl KnxService for KnxUsbConnection {
                                                 } else {
                                                     if let Ok(cemi) = crate::core::cemi_adapter::CemiAdapter::emi_to_cemi(&payload) {
                                                         let _ = reader_ctx.incoming_tx.send(cemi.clone());
+                                                        reader_ctx.logger.log_indication(&cemi);
+                                                        reader_ctx.logger.log_indication_raw(&payload);
                                                         let _ = GroupAddressCache::get_instance()
                                                             .write()
                                                             .unwrap()

@@ -87,7 +87,7 @@ reconnect_delay_ms = 5000
 # [Required] Individual Physical Address (IA) assigned to the Router
 individual_address = "1.0.2"
 
-# [Optional] Enable single individual address mode (default: true). 
+# [Optional] Enable single individual address mode (default: true).
 # If true, the router's individual address overrides sub-link physical addresses.
 use_single_ia = true
 
@@ -116,7 +116,6 @@ handle_hop_count = false
 # [router.usb]
 # vendor_id = 10434
 # product_id = 1
-
 
 # =====================================================================
 # Configuration for KNX USB Interface (Optional)
@@ -166,3 +165,8 @@ log_dir = "./logs"
 # [Optional] Optional filename suffix to append to the log filename (e.g. YYYY-MM-DD-suffix.log) (default: "")
 log_filename = "rknx"
 
+# [Optional] Log processed CEMI indications (L_Data.ind, etc.) directly to file/console (default: false)
+indications = false
+
+# [Optional] Log raw incoming packet byte frames (in hex representation) directly to file/console (default: false)
+indications_raw = false

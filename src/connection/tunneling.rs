@@ -504,6 +504,8 @@ impl KnxService for KnxTunneling {
                                                         let cemi_data = &body[header_len..];
                                                         if let Ok(cemi) = Cemi::from_buffer(cemi_data) {
                                                             let _ = _incoming_tx.send(cemi.clone());
+                                                            logger.log_indication(&cemi);
+                                                            logger.log_indication_raw(cemi_data);
                                                             let _ = GroupAddressCache::get_instance()
                                                                 .write()
                                                                 .unwrap()

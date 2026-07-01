@@ -435,15 +435,20 @@ impl KnxService for TpuartConnection {
 
                                         // CEMI parse and dispatch
                                         if *ctx_reader.is_busmonitor_mode.read().unwrap() {
-                                            let _ = ctx_reader.incoming_tx.send(Cemi::LBusmonInd(crate::core::cemi::LBusmon {
+                                            let cemi = Cemi::LBusmonInd(crate::core::cemi::LBusmon {
                                                 additional_info: Vec::new(),
-                                                data: frame,
-                                            }));
+                                                data: frame.clone(),
+                                            });
+                                            let _ = ctx_reader.incoming_tx.send(cemi.clone());
+                                            ctx_reader.logger.log_indication(&cemi);
+                                            ctx_reader.logger.log_indication_raw(&frame);
                                         } else {
                                             let mut emi_buf = vec![0x29];
                                             emi_buf.extend_from_slice(&frame);
                                             if let Ok(cemi) = crate::core::cemi_adapter::CemiAdapter::emi_to_cemi(&emi_buf) {
                                                 let _ = ctx_reader.incoming_tx.send(cemi.clone());
+                                                ctx_reader.logger.log_indication(&cemi);
+                                                ctx_reader.logger.log_indication_raw(&emi_buf);
                                                 let _ = GroupAddressCache::get_instance()
                                                     .write()
                                                     .unwrap()
