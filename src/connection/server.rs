@@ -7,7 +7,6 @@ use tokio::sync::{broadcast, mpsc};
 use tokio::time::{Duration, Instant};
 
 use super::KnxService;
-use crate::utils::logger::Logger;
 use super::tunnel_connection::{RequestAction, TunnelConnection};
 use crate::core::cemi::{Cemi, LBusmon, MPropWithPayload};
 use crate::core::device_descriptor_type::DeviceDescriptorType0;
@@ -22,6 +21,7 @@ use crate::core::knxnetip_structures::{
 };
 use crate::errors::KnxError;
 use crate::utils::knx_helper::KnxHelper;
+use crate::utils::logger::Logger;
 
 /// States for the KNXnetIPServer Finite State Machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,7 +97,6 @@ pub struct KnxNetIpServer {
     multicast_pacing: Arc<std::sync::Mutex<MulticastPacing>>,
     pacing_notify: Arc<tokio::sync::Notify>,
     udp_socket: Arc<RwLock<Option<Arc<UdpSocket>>>>,
-    #[allow(dead_code)]
     logger: Logger,
 }
 
@@ -168,10 +167,15 @@ impl KnxNetIpServer {
         }));
 
         let logger = Logger::new("KNXnetIPServer");
-        let serial_hex = options.serial_number.as_ref()
+        let serial_hex = options
+            .serial_number
+            .as_ref()
             .map(|s| s.iter().map(|b| format!("{:02X}", b)).collect::<String>())
             .unwrap_or_else(|| "000000000000".to_string());
-        logger.info(&format!("Initialized on {}:{}", options.local_ip, options.port));
+        logger.info(&format!(
+            "Initialized on {}:{}",
+            options.local_ip, options.port
+        ));
         logger.info(&format!("Serial Number: {}", serial_hex));
 
         Self {
@@ -1307,16 +1311,19 @@ impl KnxService for KnxNetIpServer {
             }
             let old_state = *s;
             *s = KnxServerState::Starting;
-            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
+            self.logger.info(
+                &format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase(),
+            );
         }
 
         let addr = format!("0.0.0.0:{}", self.options.port);
-        let socket = UdpSocket::bind(&addr)
-            .await
-            .map_err(|e| {
-                self.logger.error(&format!("Failed to bind to UDP port {}: {:?}", self.options.port, e));
-                KnxError::Io(e.to_string())
-            })?;
+        let socket = UdpSocket::bind(&addr).await.map_err(|e| {
+            self.logger.error(&format!(
+                "Failed to bind to UDP port {}: {:?}",
+                self.options.port, e
+            ));
+            KnxError::Io(e.to_string())
+        })?;
 
         let socket = Arc::new(socket);
         {
@@ -1336,9 +1343,13 @@ impl KnxService for KnxNetIpServer {
                     let mut s = self.state.write().unwrap();
                     let old = *s;
                     *s = KnxServerState::Faulted;
-                    self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                    self.logger.info(
+                        &format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase(),
+                    );
                 }
-                return Err(KnxError::Protocol("Failed to join multicast group".to_string()));
+                return Err(KnxError::Protocol(
+                    "Failed to join multicast group".to_string(),
+                ));
             }
             let _ = socket.set_multicast_loop_v4(true);
         }
@@ -1500,7 +1511,9 @@ impl KnxService for KnxNetIpServer {
             let mut s = self.state.write().unwrap();
             let old_state = *s;
             *s = KnxServerState::Running;
-            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
+            self.logger.info(
+                &format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase(),
+            );
         }
         Ok(())
     }
@@ -1512,7 +1525,9 @@ impl KnxService for KnxNetIpServer {
         }
         let old_state = *s;
         *s = KnxServerState::Stopped;
-        self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
+        self.logger.info(
+            &format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase(),
+        );
 
         self.logger.info("Stopping KNXnet/IP server...");
 
