@@ -189,6 +189,13 @@ impl KnxService for KnxUsbConnection {
             return Ok(());
         }
 
+        {
+            let mut s = self.state.write().unwrap();
+            let old = *s;
+            *s = KnxUsbState::Connecting;
+            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+        }
+
         self.logger.info("Opening KNX USB device...");
 
         #[cfg(feature = "usb")]
@@ -409,7 +416,9 @@ impl KnxService for KnxUsbConnection {
 
             {
                 let mut s = self.state.write().unwrap();
+                let old = *s;
                 *s = KnxUsbState::Connected;
+                self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
             }
 
             self.logger.info("Connected to KNX USB device successfully.");
@@ -428,7 +437,9 @@ impl KnxService for KnxUsbConnection {
         if *s == KnxUsbState::Disconnected {
             return Ok(());
         }
+        let old = *s;
         *s = KnxUsbState::Disconnected;
+        self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
 
         self.logger.info("Disconnected from KNX USB device.");
 

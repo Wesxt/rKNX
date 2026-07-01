@@ -167,6 +167,12 @@ impl KnxNetIpServer {
         }));
 
         let logger = Logger::new("KNXnetIPServer");
+        let serial_hex = options.serial_number.as_ref()
+            .map(|s| s.iter().map(|b| format!("{:02X}", b)).collect::<String>())
+            .unwrap_or_else(|| "000000000000".to_string());
+        logger.info(&format!("Initialized on {}:{}", options.local_ip, options.port));
+        logger.info(&format!("Serial Number: {}", serial_hex));
+
         Self {
             options,
             state: Arc::new(RwLock::new(KnxServerState::Stopped)),
@@ -1297,9 +1303,9 @@ impl KnxService for KnxNetIpServer {
         if *s == KnxServerState::Running {
             return Ok(());
         }
+        let old_state = *s;
         *s = KnxServerState::Starting;
-
-        self.logger.info("Starting KNXnet/IP server...");
+        self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
 
         let addr = format!("0.0.0.0:{}", self.options.port);
         let socket = UdpSocket::bind(&addr)
@@ -1482,8 +1488,12 @@ impl KnxService for KnxNetIpServer {
             }
         });
 
-        *self.state.write().unwrap() = KnxServerState::Running;
-        self.logger.info(&format!("KNXnet/IP server started and listening on 0.0.0.0:{}", self.options.port));
+        {
+            let mut s = self.state.write().unwrap();
+            let old_state = *s;
+            *s = KnxServerState::Running;
+            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
+        }
         Ok(())
     }
 
@@ -1492,7 +1502,9 @@ impl KnxService for KnxNetIpServer {
         if *s == KnxServerState::Stopped {
             return Ok(());
         }
+        let old_state = *s;
         *s = KnxServerState::Stopped;
+        self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
 
         self.logger.info("Stopping KNXnet/IP server...");
 

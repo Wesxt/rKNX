@@ -116,7 +116,9 @@ impl KnxService for KnxTunneling {
 
         {
             let mut s = state.write().unwrap();
+            let old = *s;
             *s = TunnelState::Connecting;
+            logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
         }
 
         // Spawn background task
@@ -158,7 +160,9 @@ impl KnxService for KnxTunneling {
                             logger.info(&format!("Reconnecting attempt {}/{}...", attempts, options.max_reconnect_attempts));
                             {
                                 let mut s = state.write().unwrap();
+                                let old = *s;
                                 *s = TunnelState::Reconnecting;
+                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
                             }
                             tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms)).await;
                             continue;
@@ -166,7 +170,9 @@ impl KnxService for KnxTunneling {
                             logger.error("Connection failed. Maximum attempts reached or auto-reconnect disabled.");
                             {
                                 let mut s = state.write().unwrap();
+                                let old = *s;
                                 *s = TunnelState::Faulted;
+                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
                             }
                             break;
                         }
@@ -208,7 +214,9 @@ impl KnxService for KnxTunneling {
                         logger.info(&format!("Reconnecting attempt {}/{}...", attempts, options.max_reconnect_attempts));
                         {
                             let mut s = state.write().unwrap();
+                            let old = *s;
                             *s = TunnelState::Reconnecting;
+                            logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
                         }
                         tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms)).await;
                         continue;
@@ -216,7 +224,9 @@ impl KnxService for KnxTunneling {
                         logger.error("Connection failed. Maximum attempts reached or auto-reconnect disabled.");
                         {
                             let mut s = state.write().unwrap();
+                            let old = *s;
                             *s = TunnelState::Faulted;
+                            logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
                         }
                         break;
                     }
@@ -254,7 +264,9 @@ impl KnxService for KnxTunneling {
                             logger.info(&format!("Reconnecting attempt {}/{}...", attempts, options.max_reconnect_attempts));
                             {
                                 let mut s = state.write().unwrap();
+                                let old = *s;
                                 *s = TunnelState::Reconnecting;
+                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
                             }
                             tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms)).await;
                             continue;
@@ -262,7 +274,9 @@ impl KnxService for KnxTunneling {
                             logger.error("Connection failed. Maximum attempts reached or auto-reconnect disabled.");
                             {
                                 let mut s = state.write().unwrap();
+                                let old = *s;
                                 *s = TunnelState::Faulted;
+                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
                             }
                             break;
                         }
@@ -607,7 +621,9 @@ impl KnxService for KnxTunneling {
         }
         {
             let mut s = self.state.write().unwrap();
+            let old = *s;
             *s = TunnelState::Disconnected;
+            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
         }
         Ok(())
     }

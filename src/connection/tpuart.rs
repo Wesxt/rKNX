@@ -151,6 +151,7 @@ struct TpuartContext {
     confirmation_tx: mpsc::Sender<ConfirmationEvent>,
     init_tx: Arc<Mutex<Option<oneshot::Sender<Result<(), KnxError>>>>>,
     last_sent_frame: Arc<RwLock<Option<Vec<u8>>>>,
+    logger: Logger,
 }
 
 #[cfg(feature = "serial")]
@@ -246,6 +247,18 @@ fn validate_checksum(frame: &[u8]) -> bool {
 }
 
 #[cfg(feature = "serial")]
+fn format_tpuart_state(state: TpuartState) -> String {
+    match state {
+        TpuartState::Disconnected => "DISCONNECTED".to_string(),
+        TpuartState::ResetWait => "RESET_WAIT".to_string(),
+        TpuartState::SetAddrWait => "SET_ADDR_WAIT".to_string(),
+        TpuartState::GetStateWait => "GET_STATE_WAIT".to_string(),
+        TpuartState::Online => "ONLINE".to_string(),
+        TpuartState::Error => "ERROR".to_string(),
+    }
+}
+
+#[cfg(feature = "serial")]
 fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
     // 1. External ACKs/NACKs from other devices
     if byte == 0xCC || byte == 0x0C || byte == 0xC0 {
@@ -256,7 +269,9 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
     if byte == UART_SERVICES_RESET_IND {
         let mut state_guard = ctx.state.write().unwrap();
         if *state_guard == TpuartState::ResetWait {
+            let old = *state_guard;
             *state_guard = TpuartState::SetAddrWait;
+            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
 
             if let Ok(addr_buf) =
                 KnxHelper::get_address_from_string(&ctx.options.individual_address)
@@ -266,10 +281,14 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
                 let _ = ctx.raw_write_tx.try_send(set_addr_cmd);
             }
 
+            let old = *state_guard;
             *state_guard = TpuartState::GetStateWait;
+            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
             let _ = ctx.raw_write_tx.try_send(vec![UART_SERVICES_STATE_REQ]);
         } else if *state_guard == TpuartState::Online {
+            let old = *state_guard;
             *state_guard = TpuartState::ResetWait;
+            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
             let _ = ctx.raw_write_tx.try_send(vec![UART_SERVICES_RESET_REQ]);
         }
         return;
@@ -293,7 +312,9 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
     if (byte & 0x07) == UART_SERVICES_STATE_IND {
         let mut state_guard = ctx.state.write().unwrap();
         if *state_guard != TpuartState::Online {
+            let old = *state_guard;
             *state_guard = TpuartState::Online;
+            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
 
             let mut init_guard = ctx.init_tx.lock().unwrap();
             if let Some(tx) = init_guard.take() {
@@ -347,6 +368,7 @@ impl KnxService for TpuartConnection {
                 confirmation_tx,
                 init_tx: Arc::clone(&self.init_tx),
                 last_sent_frame: Arc::clone(&self.last_sent_frame),
+                logger: self.logger.clone(),
             });
 
             // 1. Raw Serial Write loop
@@ -509,7 +531,9 @@ impl KnxService for TpuartConnection {
             // 4. Initial connection handshake
             {
                 let mut state_g = self.state.write().unwrap();
+                let old = *state_g;
                 *state_g = TpuartState::ResetWait;
+                self.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_g)));
             }
             let _ = raw_write_tx.send(vec![UART_SERVICES_RESET_REQ]).await;
 
