@@ -21,7 +21,7 @@ use crate::core::cemi::Cemi;
 use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::errors::KnxError;
 use super::KnxService;
-
+use crate::utils::logger::Logger;
 /// Known KNX USB device vendor IDs.
 pub const KNX_USB_VENDOR_IDS: &[u16] = &[
     0x28c2, // Zennio
@@ -76,6 +76,7 @@ pub struct KnxUsbConnection {
     send_tx: mpsc::Sender<Vec<u8>>,
     #[allow(dead_code)]
     send_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<Vec<u8>>>>>,
+    logger: Logger,
     
     #[cfg(feature = "usb")]
     shutdown_tx: Arc<Mutex<Option<broadcast::Sender<()>>>>,
@@ -85,6 +86,7 @@ impl KnxUsbConnection {
     pub fn new(options: KnxUsbOptions) -> Self {
         let (incoming_tx, _) = broadcast::channel(100);
         let (send_tx, send_rx) = mpsc::channel(100);
+        let logger = Logger::new("KNXUSBConnection");
         Self {
             options,
             state: Arc::new(RwLock::new(KnxUsbState::Disconnected)),
@@ -93,6 +95,7 @@ impl KnxUsbConnection {
             incoming_tx,
             send_tx,
             send_rx: Arc::new(tokio::sync::Mutex::new(Some(send_rx))),
+            logger,
             
             #[cfg(feature = "usb")]
             shutdown_tx: Arc::new(Mutex::new(None)),

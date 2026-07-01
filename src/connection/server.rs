@@ -7,6 +7,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio::time::{Duration, Instant};
 
 use super::KnxService;
+use crate::utils::logger::Logger;
 use super::tunnel_connection::{RequestAction, TunnelConnection};
 use crate::core::cemi::{Cemi, LBusmon, MPropWithPayload};
 use crate::core::device_descriptor_type::DeviceDescriptorType0;
@@ -96,6 +97,7 @@ pub struct KnxNetIpServer {
     multicast_pacing: Arc<std::sync::Mutex<MulticastPacing>>,
     pacing_notify: Arc<tokio::sync::Notify>,
     udp_socket: Arc<RwLock<Option<Arc<UdpSocket>>>>,
+    logger: Logger,
 }
 
 #[allow(dead_code)]
@@ -164,6 +166,7 @@ impl KnxNetIpServer {
             last_busy_time: Instant::now() - Duration::from_secs(10),
         }));
 
+        let logger = Logger::new("KNXnetIPServer");
         Self {
             options,
             state: Arc::new(RwLock::new(KnxServerState::Stopped)),
@@ -177,6 +180,7 @@ impl KnxNetIpServer {
             multicast_pacing,
             pacing_notify: Arc::new(tokio::sync::Notify::new()),
             udp_socket: Arc::new(RwLock::new(None)),
+            logger,
         }
     }
 
@@ -1298,7 +1302,7 @@ impl KnxService for KnxNetIpServer {
         let addr = format!("0.0.0.0:{}", self.options.port);
         let socket = UdpSocket::bind(&addr)
             .await
-            .map_err(|_| KnxError::InvalidParametersForDpt)?;
+            .map_err(|e| KnxError::Io(e.to_string()))?;
 
         let socket = Arc::new(socket);
         {
@@ -1308,14 +1312,14 @@ impl KnxService for KnxNetIpServer {
 
         if self.options.is_routing {
             let mcast_ip = Ipv4Addr::from_str(&self.options.ip)
-                .map_err(|_| KnxError::InvalidParametersForDpt)?;
+                .map_err(|e| KnxError::Protocol(format!("Invalid multicast IP: {}", e)))?;
             let local_ip =
                 Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
 
             // Join multicast group
             if let Err(_) = socket.join_multicast_v4(mcast_ip, local_ip) {
                 *s = KnxServerState::Faulted;
-                return Err(KnxError::InvalidParametersForDpt);
+                return Err(KnxError::Protocol("Failed to join multicast group".to_string()));
             }
             let _ = socket.set_multicast_loop_v4(true);
         }

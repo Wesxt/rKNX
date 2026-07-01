@@ -37,6 +37,9 @@ pub struct ClientConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct LoggingConfig {
     pub level: Option<String>,
+    pub log_to_file: Option<bool>,
+    pub log_dir: Option<String>,
+    pub log_filename: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

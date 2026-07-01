@@ -5,6 +5,7 @@ use rknx::connection::KnxService;
 use rknx::connection::server::KnxNetIpServer;
 use rknx::connection::tunneling::KnxTunneling;
 use rknx::connection::router::Router;
+use rknx::utils::logger::setup_logger;
 
 fn print_help() {
     println!("rKNX Daemon CLI");
@@ -55,12 +56,14 @@ async fn main() {
         }
     };
 
-    let log_level = config
-        .logging
-        .as_ref()
-        .and_then(|l| l.level.clone())
-        .unwrap_or_else(|| "info".to_string());
-    println!("[INFO] Configured logging level: {}", log_level);
+    if let Some(ref log_cfg) = config.logging {
+        setup_logger(
+            log_cfg.level.clone(),
+            log_cfg.log_to_file,
+            log_cfg.log_dir.clone(),
+            log_cfg.log_filename.clone(),
+        );
+    }
 
     let mut has_service = false;
 

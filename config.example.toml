@@ -156,3 +156,13 @@ individual_address = "1.0.4"
 [logging]
 # [Optional] Print logger output detail level: "error", "warn", "info", "debug", "trace" (default: "info")
 level = "info"
+
+# [Optional] Enable writing logs to disk files (default: false)
+log_to_file = true
+
+# [Optional] Path to the directory where log files will be saved (default: "./logs")
+log_dir = "./logs"
+
+# [Optional] Optional filename suffix to append to the log filename (e.g. YYYY-MM-DD-suffix.log) (default: "")
+log_filename = "rknx"
+

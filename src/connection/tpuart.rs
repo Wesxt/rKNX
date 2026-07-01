@@ -24,7 +24,7 @@ use crate::core::cemi::Cemi;
 use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::errors::KnxError;
 use super::KnxService;
-
+use crate::utils::logger::Logger;
 #[cfg(feature = "serial")]
 use crate::utils::knx_helper::KnxHelper;
 
@@ -73,6 +73,7 @@ pub struct TpuartConnection {
     send_tx: mpsc::Sender<Vec<u8>>,
     #[allow(dead_code)]
     send_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<Vec<u8>>>>>,
+    logger: Logger,
     
     // Background task channel handles
     #[cfg(feature = "serial")]
@@ -89,6 +90,7 @@ impl TpuartConnection {
     pub fn new(options: TpuartOptions) -> Self {
         let (incoming_tx, _) = broadcast::channel(100);
         let (send_tx, send_rx) = mpsc::channel(100);
+        let logger = Logger::new("TPUART");
         Self {
             options,
             state: Arc::new(RwLock::new(TpuartState::Disconnected)),
@@ -96,6 +98,7 @@ impl TpuartConnection {
             incoming_tx,
             send_tx,
             send_rx: Arc::new(tokio::sync::Mutex::new(Some(send_rx))),
+            logger,
             
             #[cfg(feature = "serial")]
             raw_write_tx: Arc::new(Mutex::new(None)),
