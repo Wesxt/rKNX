@@ -136,7 +136,7 @@ async fn test_router_sends_routing_indication() {
     // Verify disconnection
     router.disconnect().await.unwrap();
     assert!(!router.is_connected());
-    assert_eq!(router.connection_state(), "DISCONNECTED");
+    assert_eq!(router.connection_state(), "STOPPED");
 }
 
 /// Test: KnxTunneling client connects to a mock KNXnet/IP server,

@@ -97,6 +97,7 @@ pub struct KnxNetIpServer {
     multicast_pacing: Arc<std::sync::Mutex<MulticastPacing>>,
     pacing_notify: Arc<tokio::sync::Notify>,
     udp_socket: Arc<RwLock<Option<Arc<UdpSocket>>>>,
+    #[allow(dead_code)]
     logger: Logger,
 }
 
@@ -1299,13 +1300,15 @@ impl KnxNetIpServer {
 
 impl KnxService for KnxNetIpServer {
     async fn connect(&self) -> Result<(), KnxError> {
-        let mut s = self.state.write().unwrap();
-        if *s == KnxServerState::Running {
-            return Ok(());
+        {
+            let mut s = self.state.write().unwrap();
+            if *s == KnxServerState::Running {
+                return Ok(());
+            }
+            let old_state = *s;
+            *s = KnxServerState::Starting;
+            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
         }
-        let old_state = *s;
-        *s = KnxServerState::Starting;
-        self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase());
 
         let addr = format!("0.0.0.0:{}", self.options.port);
         let socket = UdpSocket::bind(&addr)
@@ -1329,7 +1332,12 @@ impl KnxService for KnxNetIpServer {
 
             // Join multicast group
             if let Err(_) = socket.join_multicast_v4(mcast_ip, local_ip) {
-                *s = KnxServerState::Faulted;
+                {
+                    let mut s = self.state.write().unwrap();
+                    let old = *s;
+                    *s = KnxServerState::Faulted;
+                    self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                }
                 return Err(KnxError::Protocol("Failed to join multicast group".to_string()));
             }
             let _ = socket.set_multicast_loop_v4(true);
