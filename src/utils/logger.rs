@@ -1,8 +1,8 @@
-use std::sync::{RwLock, OnceLock};
+use crate::core::cemi::Cemi;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-use crate::core::cemi::Cemi;
+use std::sync::{OnceLock, RwLock};
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -107,7 +107,11 @@ pub fn subscribe_indication() -> broadcast::Receiver<Cemi> {
 }
 
 pub fn subscribe_indication_raw() -> broadcast::Receiver<Vec<u8>> {
-    global_options().read().unwrap().indication_raw_tx.subscribe()
+    global_options()
+        .read()
+        .unwrap()
+        .indication_raw_tx
+        .subscribe()
 }
 
 #[derive(Clone, Debug)]
@@ -153,7 +157,12 @@ impl Logger {
         // Match the legacy colored prefix format: prefixCol + message
         let legacy_colored = format!(
             "{}{} [{}] [{}]{} {}",
-            color_code, time_str, self.module_name, level.to_str(), reset_code, msg
+            color_code,
+            time_str,
+            self.module_name,
+            level.to_str(),
+            reset_code,
+            msg
         );
 
         // Print to console
@@ -179,7 +188,7 @@ impl Logger {
             }
 
             let file_path = log_dir.join(filename);
-            
+
             // Strip ANSI escapes
             let clean_msg = strip_ansi_escapes(msg);
             let file_line = format!(
@@ -201,18 +210,30 @@ impl Logger {
         }
     }
 
-    pub fn debug(&self, msg: &str) { self.dispatch(LogLevel::Debug, msg); }
-    pub fn info(&self, msg: &str) { self.dispatch(LogLevel::Info, msg); }
-    pub fn warn(&self, msg: &str) { self.dispatch(LogLevel::Warn, msg); }
-    pub fn error(&self, msg: &str) { self.dispatch(LogLevel::Error, msg); }
-    pub fn fatal(&self, msg: &str) { self.dispatch(LogLevel::Error, msg); }
-    pub fn trace(&self, msg: &str) { self.dispatch(LogLevel::Debug, msg); }
+    pub fn debug(&self, msg: &str) {
+        self.dispatch(LogLevel::Debug, msg);
+    }
+    pub fn info(&self, msg: &str) {
+        self.dispatch(LogLevel::Info, msg);
+    }
+    pub fn warn(&self, msg: &str) {
+        self.dispatch(LogLevel::Warn, msg);
+    }
+    pub fn error(&self, msg: &str) {
+        self.dispatch(LogLevel::Error, msg);
+    }
+    pub fn fatal(&self, msg: &str) {
+        self.dispatch(LogLevel::Error, msg);
+    }
+    pub fn trace(&self, msg: &str) {
+        self.dispatch(LogLevel::Debug, msg);
+    }
 
     pub fn log_indication(&self, cemi: &Cemi) {
         let opts = global_options().read().unwrap();
         let _ = opts.indication_tx.send(cemi.clone());
         if opts.indications {
-            self.info(&format!("INDICATION: {:?}", cemi));
+            self.info(&format!("INDICATION: {:?}", cemi.describe()));
         }
     }
 
@@ -220,7 +241,11 @@ impl Logger {
         let opts = global_options().read().unwrap();
         let _ = opts.indication_raw_tx.send(data.to_vec());
         if opts.indications_raw {
-            let hex_str = data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<String>>().join(" ");
+            let hex_str = data
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<String>>()
+                .join(" ");
             self.info(&format!("INDICATION RAW: {}", hex_str));
         }
     }

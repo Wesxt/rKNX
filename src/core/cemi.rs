@@ -1,7 +1,7 @@
-use crate::core::control_field::ControlField;
-use crate::core::control_field_extended::ExtendedControlField;
+use crate::core::control_field::{ControlField, ControlFieldDescription};
+use crate::core::control_field_extended::{ExtendedControlField, ExtendedControlFieldDescription};
 use crate::core::knx_add_info_types::AddInfo;
-use crate::core::layers::data::tpdu::Tpdu;
+use crate::core::layers::data::tpdu::{Tpdu, TpduDescription};
 use crate::errors::KnxError;
 use crate::utils::knx_helper::KnxHelper;
 use byteorder::{BigEndian, ByteOrder};
@@ -21,6 +21,27 @@ impl AdditionalInformationField {
 
     pub fn default() -> Self {
         Self { items: Vec::new() }
+    }
+
+    pub fn describe(&self) -> AdditionalInfoDescription {
+        AdditionalInfoDescription {
+            obj: "AdditionalInformationField",
+            items: self.items.iter().map(|item| {
+                match item {
+                    AddInfo::PLMediumInfo(x) => format!("{:?}", x.describe()),
+                    AddInfo::RFMediumInformation(x) => format!("{:?}", x.describe()),
+                    AddInfo::BusmonitorStatusInfo(x) => format!("{:?}", x.describe()),
+                    AddInfo::TimestampRelative(x) => format!("{:?}", x.describe()),
+                    AddInfo::TimeDelayUntilSending(x) => format!("{:?}", x.describe()),
+                    AddInfo::ExtendedRelativeTimestamp(x) => format!("{:?}", x.describe()),
+                    AddInfo::BiBatInformation(x) => format!("{:?}", x.describe()),
+                    AddInfo::RFMultiInformation(x) => format!("{:?}", x.describe()),
+                    AddInfo::PreambleAndPostamble(x) => format!("{:?}", x.describe()),
+                    AddInfo::RFFastACKInformation(x) => format!("{:?}", x.describe()),
+                    AddInfo::ManufacturerSpecificData(x) => format!("{:?}", x.describe()),
+                }
+            }).collect(),
+        }
     }
 
     pub fn length(&self) -> usize {
@@ -706,15 +727,105 @@ impl Cemi {
     }
 
     pub fn describe(&self) -> CemiDescription {
-        CemiDescription {
-            obj: "CEMI",
-            message_code: self.get_message_code(),
+        match self {
+            Cemi::LDataReq(data) | Cemi::LDataCon(data) | Cemi::LDataInd(data) => {
+                let obj = match self {
+                    Cemi::LDataReq(_) => "L_Data_req",
+                    Cemi::LDataCon(_) => "L_Data_con",
+                    Cemi::LDataInd(_) => "L_Data_ind",
+                    _ => unreachable!(),
+                };
+                let add_info_field = AdditionalInformationField::new(data.additional_info.clone());
+                CemiDescription {
+                    obj: obj.to_string(),
+                    message_code: self.get_message_code(),
+                    additional_info: Some(add_info_field.describe()),
+                    control_field1: Some(data.control_field1.describe()),
+                    control_field2: Some(data.control_field2.describe()),
+                    source_address: Some(data.source_address.clone()),
+                    destination_address: Some(data.destination_address.clone()),
+                    tpdu: Some(data.tpdu.describe()),
+                }
+            }
+            Cemi::LPollDataReq(data) | Cemi::LPollDataCon(data) => {
+                let obj = match self {
+                    Cemi::LPollDataReq(_) => "L_Poll_Data_req",
+                    Cemi::LPollDataCon(_) => "L_Poll_Data_con",
+                    _ => unreachable!(),
+                };
+                let add_info_field = AdditionalInformationField::new(data.additional_info.clone());
+                CemiDescription {
+                    obj: obj.to_string(),
+                    message_code: self.get_message_code(),
+                    additional_info: Some(add_info_field.describe()),
+                    control_field1: Some(data.control_field1.describe()),
+                    control_field2: Some(data.control_field2.describe()),
+                    source_address: Some(data.source_address.clone()),
+                    destination_address: Some(data.destination_address.clone()),
+                    tpdu: None,
+                }
+            }
+            Cemi::LBusmonInd(data) => {
+                let add_info_field = AdditionalInformationField::new(data.additional_info.clone());
+                CemiDescription {
+                    obj: "L_Busmon_ind".to_string(),
+                    message_code: self.get_message_code(),
+                    additional_info: Some(add_info_field.describe()),
+                    control_field1: None,
+                    control_field2: None,
+                    source_address: None,
+                    destination_address: None,
+                    tpdu: None,
+                }
+            }
+            _ => {
+                let obj = match self {
+                    Cemi::LRawReq(_) => "L_Raw_req",
+                    Cemi::LRawCon(_) => "L_Raw_con",
+                    Cemi::LRawInd(_) => "L_Raw_ind",
+                    Cemi::TDataConnectedReq(_) => "T_Data_Connected_req",
+                    Cemi::TDataConnectedInd(_) => "T_Data_Connected_ind",
+                    Cemi::MPropReadReq(_) => "M_Prop_Read_req",
+                    Cemi::MPropReadCon(_) => "M_Prop_Read_con",
+                    Cemi::MPropWriteReq(_) => "M_Prop_Write_req",
+                    Cemi::MPropWriteCon(_) => "M_Prop_Write_con",
+                    Cemi::MPropInfoInd(_) => "M_Prop_Info_ind",
+                    Cemi::MFuncPropCommandReq(_) => "M_Func_Prop_Command_req",
+                    Cemi::MFuncPropCommandCon(_) => "M_Func_Prop_Command_con",
+                    Cemi::MFuncPropStateReadReq(_) => "M_Func_Prop_State_Read_req",
+                    Cemi::MResetReq => "M_Reset_req",
+                    Cemi::MResetInd => "M_Reset_ind",
+                    _ => "Cemi",
+                };
+                CemiDescription {
+                    obj: obj.to_string(),
+                    message_code: self.get_message_code(),
+                    additional_info: None,
+                    control_field1: None,
+                    control_field2: None,
+                    source_address: None,
+                    destination_address: None,
+                    tpdu: None,
+                }
+            }
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct CemiDescription {
-    pub obj: &'static str,
+    pub obj: String,
     pub message_code: u8,
+    pub additional_info: Option<AdditionalInfoDescription>,
+    pub control_field1: Option<ControlFieldDescription>,
+    pub control_field2: Option<ExtendedControlFieldDescription>,
+    pub source_address: Option<String>,
+    pub destination_address: Option<String>,
+    pub tpdu: Option<TpduDescription>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdditionalInfoDescription {
+    pub obj: &'static str,
+    pub items: Vec<String>,
 }
