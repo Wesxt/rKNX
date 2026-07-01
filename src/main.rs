@@ -4,6 +4,7 @@ use rknx::config::Config;
 use rknx::connection::KnxService;
 use rknx::connection::server::KnxNetIpServer;
 use rknx::connection::tunneling::KnxTunneling;
+use rknx::connection::router::Router;
 
 fn print_help() {
     println!("rKNX Daemon CLI");
@@ -63,6 +64,24 @@ async fn main() {
 
     let mut has_service = false;
 
+    // Start router if configured
+    let router = if let Some(router_opts) = config.to_router_options() {
+        println!(
+            "[INFO] Starting KNXnet/IP Router on IA: {}...",
+            router_opts.individual_address
+        );
+        let r = Router::new(router_opts);
+        if let Err(e) = r.connect_all().await {
+            eprintln!("[ERROR] Failed to start KNXnet/IP Router: {:?}", e);
+            process::exit(1);
+        }
+        println!("[INFO] KNXnet/IP Router is running successfully with {} links.", r.link_count());
+        has_service = true;
+        Some(r)
+    } else {
+        None
+    };
+
     // Start server if configured
     let server = if let Some(server_opts) = config.to_server_options() {
         println!(
@@ -100,7 +119,7 @@ async fn main() {
     };
 
     if !has_service {
-        eprintln!("[ERROR] No server or client services configured. Exiting.");
+        eprintln!("[ERROR] No server, client, or router services configured. Exiting.");
         process::exit(1);
     }
 
@@ -108,6 +127,9 @@ async fn main() {
     tokio::signal::ctrl_c().await.ok();
     println!("[INFO] Shutting down services...");
 
+    if let Some(r) = router {
+        r.disconnect_all().await;
+    }
     if let Some(s) = server {
         let _ = s.disconnect().await;
     }

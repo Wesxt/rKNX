@@ -84,15 +84,39 @@ reconnect_delay_ms = 5000
 # Configuration for KNXnet/IP Router Interface (Optional)
 # =====================================================================
 [router]
-# [TODO] There are missing options for the links that the router instantiates.
 # [Required] Individual Physical Address (IA) assigned to the Router
 individual_address = "1.0.2"
 
-# [Optional] Enable single individual address mode (default: false)
-use_single_ia = false
+# [Optional] Enable single individual address mode (default: true). 
+# If true, the router's individual address overrides sub-link physical addresses.
+use_single_ia = true
 
 # [Optional] Handle and validate routing hop count (default: false)
 handle_hop_count = false
+
+# --- Optional Sub-links instantiated and managed by this Router ---
+#
+# [router.server]
+# ip = "224.0.23.12"
+# port = 3671
+# local_ip = "0.0.0.0"
+# friendly_name = "Router Internal Gateway"
+# max_pending_requests_per_client = 100
+#
+# [router.tpuart]
+# path = "/dev/ttyAMA0"
+# ack_group = false
+# ack_individual = false
+#
+# [[router.tunneling]]
+# gateway_host = "192.168.1.10"
+# gateway_port = 3671
+# transport = "Udp"
+#
+# [router.usb]
+# vendor_id = 10434
+# product_id = 1
+
 
 # =====================================================================
 # Configuration for KNX USB Interface (Optional)

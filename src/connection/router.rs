@@ -35,6 +35,11 @@ pub struct DirectionFilter {
     pub individual_address: Option<AddressFilter>,
 }
 
+use crate::connection::server::{KnxNetIpServer, KnxNetIpServerOptions};
+use crate::connection::tunneling::{KnxTunneling, TunnelingOptions};
+use crate::connection::usb::{KnxUsbConnection, KnxUsbOptions};
+use crate::connection::tpuart::{TpuartConnection, TpuartOptions};
+
 /// Configuration options for the Router.
 #[derive(Debug, Clone)]
 pub struct RouterOptions {
@@ -43,19 +48,19 @@ pub struct RouterOptions {
     pub handle_hop_count: bool,
     pub to_ip_filter: DirectionFilter,
     pub to_local_filter: DirectionFilter,
+    pub knx_net_ip_server: Option<KnxNetIpServerOptions>,
+    pub tpuart: Option<TpuartOptions>,
+    pub tunneling: Option<Vec<TunnelingOptions>>,
+    pub usb: Option<KnxUsbOptions>,
 }
 
 /// A concrete trait alias/enum wrapping the known link types.
 /// This avoids the need for dyn trait objects, which are not compatible with `async fn` in traits.
-use crate::connection::tunneling::KnxTunneling;
-// Note: Other link types like USB or TPUART can be added here once their structs are imported.
-use crate::connection::usb::KnxUsbConnection;
-use crate::connection::tpuart::TpuartConnection;
-
 pub enum KnxLink {
     Tunneling(KnxTunneling),
     Usb(KnxUsbConnection),
     Tpuart(TpuartConnection),
+    Server(KnxNetIpServer),
 }
 
 use super::KnxService;
@@ -66,6 +71,7 @@ impl KnxLink {
             KnxLink::Tunneling(t) => t.connect().await,
             KnxLink::Usb(u) => u.connect().await,
             KnxLink::Tpuart(tp) => tp.connect().await,
+            KnxLink::Server(s) => s.connect().await,
         }
     }
 
@@ -74,6 +80,7 @@ impl KnxLink {
             KnxLink::Tunneling(t) => t.disconnect().await,
             KnxLink::Usb(u) => u.disconnect().await,
             KnxLink::Tpuart(tp) => tp.disconnect().await,
+            KnxLink::Server(s) => s.disconnect().await,
         }
     }
 
@@ -82,6 +89,7 @@ impl KnxLink {
             KnxLink::Tunneling(t) => t.send(cemi).await,
             KnxLink::Usb(u) => u.send(cemi).await,
             KnxLink::Tpuart(tp) => tp.send(cemi).await,
+            KnxLink::Server(s) => s.send(cemi).await,
         }
     }
 
@@ -90,6 +98,7 @@ impl KnxLink {
             KnxLink::Tunneling(t) => t.connection_state(),
             KnxLink::Usb(u) => u.connection_state(),
             KnxLink::Tpuart(tp) => tp.connection_state(),
+            KnxLink::Server(s) => s.connection_state(),
         }
     }
 
@@ -98,6 +107,7 @@ impl KnxLink {
             KnxLink::Tunneling(t) => t.is_connected(),
             KnxLink::Usb(u) => u.is_connected(),
             KnxLink::Tpuart(tp) => tp.is_connected(),
+            KnxLink::Server(s) => s.is_connected(),
         }
     }
 
@@ -106,6 +116,7 @@ impl KnxLink {
             KnxLink::Tunneling(t) => t.individual_address(),
             KnxLink::Usb(u) => u.individual_address(),
             KnxLink::Tpuart(tp) => tp.individual_address(),
+            KnxLink::Server(s) => s.individual_address(),
         }
     }
 }
@@ -137,7 +148,7 @@ pub struct Router {
 impl Router {
     pub fn new(options: RouterOptions) -> Self {
         let (indication_tx, _) = broadcast::channel(256);
-        Self {
+        let mut router = Self {
             individual_address: options.individual_address,
             use_single_ia: options.use_single_ia,
             handle_hop_count: options.handle_hop_count,
@@ -147,7 +158,44 @@ impl Router {
             to_ip_filter: options.to_ip_filter,
             to_local_filter: options.to_local_filter,
             indication_tx,
+        };
+
+        if let Some(mut server_opts) = options.knx_net_ip_server {
+            if router.use_single_ia {
+                server_opts.individual_address = router.individual_address.clone();
+            }
+            let key = format!("IP KNXnet/IP Server: {}:{}", server_opts.local_ip, server_opts.port);
+            let server = KnxNetIpServer::new(server_opts);
+            router.add_link(key, KnxLink::Server(server));
         }
+
+        if let Some(mut tpuart_opts) = options.tpuart {
+            if router.use_single_ia {
+                tpuart_opts.individual_address = router.individual_address.clone();
+            }
+            let key = "TPUART".to_string();
+            let conn = TpuartConnection::new(tpuart_opts);
+            router.add_link(key, KnxLink::Tpuart(conn));
+        }
+
+        if let Some(tunneling_vec) = options.tunneling {
+            for c in tunneling_vec {
+                let key = format!("IP Tunneling: {}:{}", c.ip, c.port);
+                let client = KnxTunneling::new(c);
+                router.add_link(key, KnxLink::Tunneling(client));
+            }
+        }
+
+        if let Some(mut usb_opts) = options.usb {
+            if router.use_single_ia {
+                usb_opts.individual_address = router.individual_address.clone();
+            }
+            let key = "KNXUSB".to_string();
+            let conn = KnxUsbConnection::new(usb_opts);
+            router.add_link(key, KnxLink::Usb(conn));
+        }
+
+        router
     }
 
     /// Subscribe to routed indications. Returns `(source_key, cemi)`.
@@ -430,6 +478,10 @@ mod tests {
             handle_hop_count: false,
             to_ip_filter: DirectionFilter::default(),
             to_local_filter: DirectionFilter::default(),
+            knx_net_ip_server: None,
+            tpuart: None,
+            tunneling: None,
+            usb: None,
         };
         let mut bridge = Router::new(options);
         bridge.learn_address("1.1.1", "TPUART");
@@ -453,6 +505,10 @@ mod tests {
             handle_hop_count: false,
             to_ip_filter: DirectionFilter::default(),
             to_local_filter: DirectionFilter::default(),
+            knx_net_ip_server: None,
+            tpuart: None,
+            tunneling: None,
+            usb: None,
         };
         let mut bridge = Router::new(options);
 
@@ -481,6 +537,10 @@ mod tests {
             handle_hop_count: false,
             to_ip_filter: filter,
             to_local_filter: DirectionFilter::default(),
+            knx_net_ip_server: None,
+            tpuart: None,
+            tunneling: None,
+            usb: None,
         };
         let bridge = Router::new(options);
 
