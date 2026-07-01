@@ -42,6 +42,7 @@ pub struct LoggingConfig {
     pub log_filename: Option<String>,
     pub indications: Option<bool>,
     pub indications_raw: Option<bool>,
+    pub node_format: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

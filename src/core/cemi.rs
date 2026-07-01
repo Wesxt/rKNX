@@ -726,7 +726,16 @@ impl Cemi {
         }
     }
 
-    pub fn describe(&self) -> CemiDescription {
+    pub fn describe(&self, node_format: bool) -> String {
+        let desc = self.describe_struct();
+        if node_format {
+            desc.to_node_string()
+        } else {
+            format!("{:?}", desc)
+        }
+    }
+
+    pub fn describe_struct(&self) -> CemiDescription {
         match self {
             Cemi::LDataReq(data) | Cemi::LDataCon(data) | Cemi::LDataInd(data) => {
                 let obj = match self {
@@ -822,6 +831,134 @@ pub struct CemiDescription {
     pub source_address: Option<String>,
     pub destination_address: Option<String>,
     pub tpdu: Option<TpduDescription>,
+}
+
+impl CemiDescription {
+    pub fn to_node_string(&self) -> String {
+        let mut out = String::new();
+        out.push_str("CEMI {\n");
+        out.push_str(&format!("  obj: '{}',\n", self.obj));
+        out.push_str(&format!("  messageCode: {},\n", self.message_code));
+        
+        if let Some(ref add_info) = self.additional_info {
+            out.push_str("  additionalInfo: {\n");
+            out.push_str(&format!("    obj: '{}',\n", add_info.obj));
+            out.push_str("    items: [");
+            if !add_info.items.is_empty() {
+                out.push('\n');
+                for (i, item) in add_info.items.iter().enumerate() {
+                    let formatted = item.replace("\n", "\n      ");
+                    out.push_str(&format!("      {}", formatted));
+                    if i < add_info.items.len() - 1 {
+                        out.push_str(",\n");
+                    } else {
+                        out.push('\n');
+                    }
+                }
+                out.push_str("    ]\n");
+            } else {
+                out.push_str("]\n");
+            }
+            out.push_str("  },\n");
+        }
+
+        if let Some(ref cf1) = self.control_field1 {
+            out.push_str("  controlField1: {\n");
+            out.push_str(&format!("    obj: '{}',\n", cf1.obj));
+            let clean_hex = cf1.hex.trim_start_matches("0x").to_lowercase();
+            out.push_str(&format!("    buffer: <Buffer {}>,\n", clean_hex));
+            out.push_str(&format!("    hex: '{}',\n", cf1.hex.to_lowercase()));
+            out.push_str(&format!("    FrameType: '{}',\n", cf1.frame_type));
+            out.push_str(&format!("    Repeat: {},\n", cf1.repeat));
+            out.push_str(&format!("    SystemBroadcast: {},\n", cf1.system_broadcast));
+            out.push_str(&format!("    Priority: '{}',\n", cf1.priority));
+            out.push_str(&format!("    ACKRequest: '{}',\n", cf1.ack_request));
+            out.push_str(&format!("    Confirm: '{}'\n", cf1.confirm));
+            out.push_str("  },\n");
+        }
+
+        if let Some(ref cf2) = self.control_field2 {
+            out.push_str("  controlField2: {\n");
+            out.push_str(&format!("    obj: '{}',\n", cf2.obj));
+            out.push_str(&format!("    hex: '{}',\n", cf2.hex.to_lowercase()));
+            out.push_str(&format!("    addressType: '{}',\n", cf2.address_type));
+            out.push_str(&format!("    hopCount: {},\n", cf2.hop_count));
+            let eff_num = match cf2.extended_frame_format {
+                "PointToPointOrStandardGroupAddressed" => 0,
+                "MulticastZoneAddressed11" => 7,
+                "MulticastZoneAddressed01" => 5,
+                "MulticastZoneAddressed10" => 6,
+                "MulticastZoneAddressed00" => 4,
+                _ => 0,
+            };
+            out.push_str(&format!("    extendedFrameFormat: {},\n", eff_num));
+            out.push_str(&format!("    buffer: {}\n", cf2.buffer));
+            out.push_str("  },\n");
+        }
+
+        if let Some(ref src) = self.source_address {
+            out.push_str(&format!("  sourceAddress: '{}',\n", src));
+        }
+
+        if let Some(ref dst) = self.destination_address {
+            out.push_str(&format!("  destinationAddress: '{}',\n", dst));
+        }
+
+        if let Some(ref tpdu) = self.tpdu {
+            out.push_str("  TPDU: {\n");
+            out.push_str(&format!("    obj: '{}',\n", tpdu.obj));
+            out.push_str(&format!("    layer: '{}',\n", tpdu.layer));
+            
+            // tpci
+            out.push_str("    tpci: {\n");
+            out.push_str(&format!("      obj: '{}',\n", tpdu.tpci.obj));
+            let tpci_clean_hex = tpdu.tpci.hex.trim_start_matches("0x").to_lowercase();
+            out.push_str(&format!("      buffer: <Buffer {}>,\n", tpci_clean_hex));
+            out.push_str(&format!("      hex: '{}',\n", tpdu.tpci.hex.to_lowercase()));
+            out.push_str(&format!("      dataOrControlFlag: '{}',\n", tpdu.tpci.data_or_control_flag));
+            out.push_str(&format!("      numbered: {},\n", tpdu.tpci.numbered));
+            out.push_str(&format!("      sequenceNumber: {},\n", tpdu.tpci.sequence_number));
+            out.push_str(&format!("      firstTwoBitsFromAPCI: {},\n", tpdu.tpci.first_two_bits_from_apci));
+            out.push_str(&format!("      TPCIType: '{}'\n", tpdu.tpci.tpci_type));
+            out.push_str("    },\n");
+
+            // apdu
+            out.push_str("    APDU: {\n");
+            out.push_str(&format!("      obj: '{}',\n", tpdu.apdu.obj));
+            out.push_str(&format!("      layer: '{}',\n", tpdu.apdu.layer));
+            
+            out.push_str("      tpci: {\n");
+            out.push_str(&format!("        obj: '{}',\n", tpdu.apdu.tpci.obj));
+            let apdu_tpci_clean_hex = tpdu.apdu.tpci.hex.trim_start_matches("0x").to_lowercase();
+            out.push_str(&format!("        buffer: <Buffer {}>,\n", apdu_tpci_clean_hex));
+            out.push_str(&format!("        hex: '{}',\n", tpdu.apdu.tpci.hex.to_lowercase()));
+            out.push_str(&format!("        dataOrControlFlag: '{}',\n", tpdu.apdu.tpci.data_or_control_flag));
+            out.push_str(&format!("        numbered: {},\n", tpdu.apdu.tpci.numbered));
+            out.push_str(&format!("        sequenceNumber: {},\n", tpdu.apdu.tpci.sequence_number));
+            out.push_str(&format!("        firstTwoBitsFromAPCI: {},\n", tpdu.apdu.tpci.first_two_bits_from_apci));
+            out.push_str(&format!("        TPCIType: '{}'\n", tpdu.apdu.tpci.tpci_type));
+            out.push_str("      },\n");
+
+            out.push_str("      apci: {\n");
+            out.push_str(&format!("        obj: '{}',\n", tpdu.apdu.apci.obj));
+            out.push_str(&format!("        command: '{}',\n", tpdu.apdu.apci.command));
+            out.push_str(&format!("        value: '{}'\n", tpdu.apdu.apci.value));
+            out.push_str("      },\n");
+
+            let data_hex: Vec<String> = tpdu.apdu.data.iter().map(|b| format!("{:02x}", b)).collect();
+            out.push_str(&format!("      data: <Buffer {}>\n", data_hex.join(" ")));
+            out.push_str("    }\n");
+
+            out.push_str("  }\n");
+        }
+
+        if out.ends_with(",\n") {
+            out.truncate(out.len() - 2);
+            out.push('\n');
+        }
+        out.push('}');
+        out
+    }
 }
 
 #[derive(Debug, Clone)]

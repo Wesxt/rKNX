@@ -170,3 +170,6 @@ indications = false
 
 # [Optional] Log raw incoming packet byte frames (in hex representation) directly to file/console (default: false)
 indications_raw = false
+
+# [Optional] Pretty print indications in a NodeJS-style format (default: false)
+node_format = false

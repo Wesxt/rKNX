@@ -204,6 +204,7 @@ async fn test_logger_indication_subscription() {
         None,
         Some(true),
         Some(true),
+        Some(true),
     );
 
     let mut rx_ind = subscribe_indication();
@@ -214,6 +215,11 @@ async fn test_logger_indication_subscription() {
         additional_info: Vec::new(),
         data: vec![1, 2, 3],
     });
+
+    // Test the node-style describe output format
+    let node_desc = test_cemi.describe(true);
+    assert!(node_desc.contains("obj: 'L_Busmon_ind'"));
+    assert!(node_desc.contains("messageCode: 43"));
 
     logger.log_indication(&test_cemi);
     logger.log_indication_raw(&[1, 2, 3]);
@@ -235,6 +241,7 @@ async fn test_logger_indication_subscription() {
         None,
         None,
         None,
+        Some(false),
         Some(false),
         Some(false),
     );

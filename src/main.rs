@@ -64,6 +64,7 @@ async fn main() {
             log_cfg.log_filename.clone(),
             log_cfg.indications,
             log_cfg.indications_raw,
+            log_cfg.node_format,
         );
     }
 

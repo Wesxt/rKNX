@@ -47,6 +47,7 @@ pub struct LoggerOptions {
     pub indication_raw_tx: broadcast::Sender<Vec<u8>>,
     pub indications: bool,
     pub indications_raw: bool,
+    pub node_format: bool,
 }
 
 impl Default for LoggerOptions {
@@ -63,6 +64,7 @@ impl Default for LoggerOptions {
             indication_raw_tx,
             indications: false,
             indications_raw: false,
+            node_format: false,
         }
     }
 }
@@ -80,6 +82,7 @@ pub fn setup_logger(
     log_filename: Option<String>,
     indications: Option<bool>,
     indications_raw: Option<bool>,
+    node_format: Option<bool>,
 ) {
     let mut opts = global_options().write().unwrap();
     if let Some(l) = level {
@@ -99,6 +102,9 @@ pub fn setup_logger(
     }
     if let Some(ind_raw) = indications_raw {
         opts.indications_raw = ind_raw;
+    }
+    if let Some(nf) = node_format {
+        opts.node_format = nf;
     }
 }
 
@@ -233,7 +239,7 @@ impl Logger {
         let opts = global_options().read().unwrap();
         let _ = opts.indication_tx.send(cemi.clone());
         if opts.indications {
-            self.info(&format!("INDICATION: {:?}", cemi.describe()));
+            self.info(&format!("INDICATION: {}", cemi.describe(opts.node_format)));
         }
     }
 
