@@ -23,6 +23,22 @@ use crate::errors::KnxError;
 use crate::utils::knx_helper::KnxHelper;
 use crate::utils::logger::Logger;
 
+#[derive(Debug, Clone)]
+pub enum ServerEvent {
+    Connected,
+    Disconnected,
+    Error(String),
+    Indication(Cemi),
+    RawIndication(Vec<u8>),
+    Send(Cemi),
+    QueueOverflow,
+    DisconnectedClient(u8),
+    RoutingBusy(bool),
+    RoutingReady,
+    RoutingLostMessage(RoutingLostMessage),
+    RoutingSystemBroadcast(Vec<u8>),
+}
+
 /// States for the KNXnetIPServer Finite State Machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KnxServerState {
@@ -56,6 +72,7 @@ pub struct KnxNetIpServerOptions {
     pub use_all_interfaces: bool,
     pub is_routing: bool,
     pub max_pending_requests_per_client: u32,
+    pub ignore_acktimeout: bool,
 }
 
 /// Multicast pacing queue and flow control state.
@@ -89,6 +106,7 @@ pub struct KnxNetIpServer {
     socket_tx: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     socket_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<(Vec<u8>, SocketAddr)>>>>,
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<ServerEvent>,
     clients: Arc<RwLock<HashMap<u8, TunnelConnection>>>,
 
     server_ia_int: u16,
@@ -98,12 +116,14 @@ pub struct KnxNetIpServer {
     pacing_notify: Arc<tokio::sync::Notify>,
     udp_socket: Arc<RwLock<Option<Arc<UdpSocket>>>>,
     logger: Logger,
+    ignore_acktimeout: bool,
 }
 
 #[allow(dead_code)]
 impl KnxNetIpServer {
     pub fn new(mut options: KnxNetIpServerOptions) -> Self {
         let (incoming_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(100);
         let (socket_tx, socket_rx) = mpsc::channel(100);
 
         if options.ip.is_empty() {
@@ -178,12 +198,14 @@ impl KnxNetIpServer {
         ));
         logger.info(&format!("Serial Number: {}", serial_hex));
 
+        let ignore_acktimeout = options.ignore_acktimeout;
         Self {
             options,
             state: Arc::new(RwLock::new(KnxServerState::Stopped)),
             socket_tx,
             socket_rx: Arc::new(tokio::sync::Mutex::new(Some(socket_rx))),
             incoming_tx,
+            event_tx,
             clients: Arc::new(RwLock::new(HashMap::new())),
             server_ia_int,
             max_tunnel_connections,
@@ -192,11 +214,16 @@ impl KnxNetIpServer {
             pacing_notify: Arc::new(tokio::sync::Notify::new()),
             udp_socket: Arc::new(RwLock::new(None)),
             logger,
+            ignore_acktimeout,
         }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Cemi> {
         self.incoming_tx.subscribe()
+    }
+
+    pub fn subscribe_events(&self) -> broadcast::Receiver<ServerEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Discovers KNXnet/IP devices on the network.
@@ -603,6 +630,7 @@ impl KnxNetIpServer {
                         if let Some(cid) = stale_channel {
                             if let Some(mut conn) = clients.remove(&cid) {
                                 conn.close();
+                                let _ = self.event_tx.send(ServerEvent::DisconnectedClient(cid));
                             }
                         }
                     }
@@ -629,6 +657,7 @@ impl KnxNetIpServer {
                         120_000,
                         1_000,
                         100,
+                        self.ignore_acktimeout,
                     );
                     clients.insert(channel_id, conn);
 
@@ -680,6 +709,7 @@ impl KnxNetIpServer {
                             120_000,
                             1_000,
                             100,
+                            self.ignore_acktimeout,
                         );
                         clients.insert(channel_id, conn);
 
@@ -759,6 +789,7 @@ impl KnxNetIpServer {
                     let mut clients = self.clients.write().unwrap();
                     if let Some(mut conn) = clients.remove(&channel_id) {
                         conn.close();
+                        let _ = self.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
                     }
                 }
 
@@ -799,6 +830,7 @@ impl KnxNetIpServer {
                         if flood_threshold > 0 && conn.rx_count > flood_threshold {
                             conn.close();
                             clients.remove(&channel_id);
+                            let _ = self.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
 
                             // Send DISCONNECT_REQUEST to client
                             let server_hpai = self.get_hpai(Some(rinfo));
@@ -862,6 +894,8 @@ impl KnxNetIpServer {
 
                 if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                     let _ = self.incoming_tx.send(cemi.clone());
+                    let _ = self.event_tx.send(ServerEvent::Indication(cemi.clone()));
+                    let _ = self.event_tx.send(ServerEvent::RawIndication(mut_cemi_bytes.clone()));
                     self.logger.log_indication(&cemi);
                     self.logger.log_indication_raw(&mut_cemi_bytes);
                     let _ =
@@ -1016,6 +1050,8 @@ impl KnxNetIpServer {
                 let cemi_start = 6;
                 if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                     let _ = self.incoming_tx.send(cemi.clone());
+                    let _ = self.event_tx.send(ServerEvent::Indication(cemi.clone()));
+                    let _ = self.event_tx.send(ServerEvent::RawIndication(msg[cemi_start..].to_vec()));
                     self.logger.log_indication(&cemi);
                     self.logger.log_indication_raw(&msg[cemi_start..]);
                     let _ =
@@ -1068,6 +1104,9 @@ impl KnxNetIpServer {
                         data: lost.to_buffer(),
                     });
                     let _ = self.incoming_tx.send(cemi.clone());
+                    let _ = self.event_tx.send(ServerEvent::RoutingLostMessage(lost.clone()));
+                    let _ = self.event_tx.send(ServerEvent::Indication(cemi.clone()));
+                    let _ = self.event_tx.send(ServerEvent::RawIndication(body.to_vec()));
                     self.logger.log_indication(&cemi);
                     self.logger.log_indication_raw(body);
                 }
@@ -1150,6 +1189,7 @@ impl KnxNetIpServer {
             let mut pacing = self.multicast_pacing.lock().unwrap();
             if pacing.msg_queue.len() >= 100 {
                 Self::send_lost_message(socket, &self.options, 1);
+                let _ = self.event_tx.send(ServerEvent::QueueOverflow);
                 return;
             }
 
@@ -1160,13 +1200,17 @@ impl KnxNetIpServer {
                 let wait_time = (delay * pacing.msg_queue.len()).min(100) as u16;
                 Self::send_routing_busy(socket, &self.options, wait_time);
                 pacing.is_routing_busy = true;
+                let _ = self.event_tx.send(ServerEvent::RoutingBusy(true));
 
                 let pacing_cloned = Arc::clone(&self.multicast_pacing);
                 let notify_cloned = Arc::clone(&self.pacing_notify);
+                let event_tx_cloned = self.event_tx.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_millis(wait_time as u64)).await;
                     let mut p = pacing_cloned.lock().unwrap();
                     p.is_routing_busy = false;
+                    let _ = event_tx_cloned.send(ServerEvent::RoutingBusy(false));
+                    let _ = event_tx_cloned.send(ServerEvent::RoutingReady);
                     notify_cloned.notify_one();
                 });
             }
@@ -1247,12 +1291,16 @@ impl KnxNetIpServer {
             let wait_time = (busy.wait_time as u64) + rand_val;
 
             pacing.is_routing_busy = true;
+            let _ = self.event_tx.send(ServerEvent::RoutingBusy(true));
             let pacing_cloned = Arc::clone(&self.multicast_pacing);
             let notify_cloned = Arc::clone(&self.pacing_notify);
+            let event_tx_cloned = self.event_tx.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(wait_time)).await;
                 let mut p = pacing_cloned.lock().unwrap();
                 p.is_routing_busy = false;
+                let _ = event_tx_cloned.send(ServerEvent::RoutingBusy(false));
+                let _ = event_tx_cloned.send(ServerEvent::RoutingReady);
                 notify_cloned.notify_one();
             });
         }
@@ -1260,6 +1308,7 @@ impl KnxNetIpServer {
 
     pub async fn send_raw(&self, cemi_bytes: &[u8]) -> Result<(), KnxError> {
         let cemi = Cemi::from_buffer(cemi_bytes)?;
+        let _ = self.event_tx.send(ServerEvent::Send(cemi.clone()));
 
         let src_ia_str = match &cemi {
             Cemi::LDataReq(ld) | Cemi::LDataCon(ld) | Cemi::LDataInd(ld) => {
@@ -1270,6 +1319,7 @@ impl KnxNetIpServer {
 
         let busmon_body = convert_data_ind_to_busmon_ind(cemi_bytes);
 
+        let mut sends = Vec::new();
         {
             let mut clients = self.clients.write().unwrap();
             for conn in clients.values_mut() {
@@ -1285,9 +1335,15 @@ impl KnxNetIpServer {
 
                 if let Some(packet) = conn.process_queue() {
                     let dest = conn.data_endpoint();
-                    let _ = self.socket_tx.send((packet, dest.parse().unwrap())).await;
+                    if let Ok(dest_addr) = dest.parse::<std::net::SocketAddr>() {
+                        sends.push((packet, dest_addr));
+                    }
                 }
             }
+        }
+
+        for (packet, dest_addr) in sends {
+            let _ = self.socket_tx.send((packet, dest_addr)).await;
         }
 
         if self.options.is_routing {
@@ -1299,9 +1355,12 @@ impl KnxNetIpServer {
                 routing_cemi[0] = 0x2d;
             }
 
-            let socket_guard = self.udp_socket.read().unwrap();
-            if let Some(ref socket) = *socket_guard {
-                self.enqueue_packet(socket, &routing_cemi).await;
+            let socket_opt = {
+                let socket_guard = self.udp_socket.read().unwrap();
+                socket_guard.clone()
+            };
+            if let Some(socket) = socket_opt {
+                self.enqueue_packet(&socket, &routing_cemi).await;
             }
         }
 
@@ -1410,6 +1469,8 @@ impl KnxService for KnxNetIpServer {
         let clients_check = Arc::clone(&self.clients);
         let socket_check = Arc::clone(&socket);
         let options_check = self.options.clone();
+        let logger = self.logger.clone();
+        let event_tx_check = self.event_tx.clone();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1418,14 +1479,23 @@ impl KnxService for KnxNetIpServer {
                 let mut channels_to_remove = Vec::new();
                 {
                     let mut clients = clients_check.write().unwrap();
-                    for (&cid, conn) in clients.iter_mut() {
+                    for (&channel_id, conn) in clients.iter_mut() {
                         if conn.is_heartbeat_expired() {
-                            channels_to_remove.push((cid, true));
+                            channels_to_remove.push((channel_id, true));
                         } else if conn.is_ack_timeout() {
-                            if let Some(true) = conn.pending_ack_is_retransmission() {
-                                channels_to_remove.push((cid, true));
+                            if conn.pending_ack_is_retransmission() == Some(true) {
+                                if !options_check.ignore_acktimeout {
+                                    logger.error(&format!("Second ACK timeout for channel_id {channel_id}. Terminating connection."));
+                                    channels_to_remove.push((channel_id, true));
+                                } else {
+                                    logger.warn(&format!("Second ACK timeout for channel_id {channel_id}. Continuing anyway."));
+                                    conn.ignore_ack_timeout();
+                                }
                             } else {
                                 if let Some(packet) = conn.retransmit() {
+                                    logger.warn(&format!(
+                                        "ACK timeout for channel_id {channel_id}, retransmitting..."
+                                    ));
                                     sends.push((packet, conn.data_endpoint()));
                                 }
                             }
@@ -1443,13 +1513,14 @@ impl KnxService for KnxNetIpServer {
                     }
                 }
 
-                for (cid, send_disconnect) in channels_to_remove {
+                for (channel_id, send_disconnect) in channels_to_remove {
                     let mut conn_to_close = None;
                     {
                         let mut clients = clients_check.write().unwrap();
-                        if let Some(mut conn) = clients.remove(&cid) {
+                        if let Some(mut conn) = clients.remove(&channel_id) {
                             conn.close();
                             conn_to_close = Some(conn);
+                            let _ = event_tx_check.send(ServerEvent::DisconnectedClient(channel_id));
                         }
                     }
 
@@ -1461,7 +1532,7 @@ impl KnxService for KnxNetIpServer {
                                     .unwrap_or(Ipv4Addr::new(127, 0, 0, 1)),
                                 options_check.port,
                             );
-                            let mut body = vec![cid, 0x00];
+                            let mut body = vec![channel_id, 0x00];
                             body.extend_from_slice(&hpai.to_buffer());
                             let header = KnxNetIpHeader::new(
                                 KnxNetIpServiceType::DisconnectRequest,
@@ -1482,6 +1553,7 @@ impl KnxService for KnxNetIpServer {
             options: self.options.clone(),
             clients: Arc::clone(&self.clients),
             incoming_tx: self.incoming_tx.clone(),
+            event_tx: self.event_tx.clone(),
             server_ia_int: self.server_ia_int,
             max_tunnel_connections: self.max_tunnel_connections,
             client_addrs_start_int: self.client_addrs_start_int,
@@ -1523,6 +1595,7 @@ impl KnxService for KnxNetIpServer {
                 &format!("FSM: State transition from {:?} to {:?}", old_state, *s).to_uppercase(),
             );
         }
+        let _ = self.event_tx.send(ServerEvent::Connected);
         Ok(())
     }
 
@@ -1553,6 +1626,7 @@ impl KnxService for KnxNetIpServer {
         pacing.msg_queue.clear();
 
         self.logger.info("KNXnet/IP server stopped.");
+        let _ = self.event_tx.send(ServerEvent::Disconnected);
 
         Ok(())
     }
@@ -1585,6 +1659,7 @@ struct HandlerContext {
     options: KnxNetIpServerOptions,
     clients: Arc<RwLock<HashMap<u8, TunnelConnection>>>,
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<ServerEvent>,
     server_ia_int: u16,
     max_tunnel_connections: u8,
     client_addrs_start_int: u16,
@@ -1749,6 +1824,7 @@ async fn handle_message_static(
                         if let Some(cid) = stale_channel {
                             if let Some(mut conn) = clients.remove(&cid) {
                                 conn.close();
+                                let _ = ctx.event_tx.send(ServerEvent::DisconnectedClient(cid));
                             }
                         }
                     }
@@ -1775,6 +1851,7 @@ async fn handle_message_static(
                         120_000,
                         1_000,
                         100,
+                        ctx.options.ignore_acktimeout,
                     );
                     clients.insert(channel_id, conn);
 
@@ -1820,6 +1897,7 @@ async fn handle_message_static(
                             120_000,
                             1_000,
                             100,
+                            ctx.options.ignore_acktimeout,
                         );
                         clients.insert(channel_id, conn);
 
@@ -1895,6 +1973,7 @@ async fn handle_message_static(
                 let mut clients = ctx.clients.write().unwrap();
                 if let Some(mut conn) = clients.remove(&channel_id) {
                     conn.close();
+                    let _ = ctx.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
                 }
             }
 
@@ -1935,6 +2014,7 @@ async fn handle_message_static(
                         let ep = conn.control_endpoint();
                         conn.close();
                         clients.remove(&channel_id);
+                        let _ = ctx.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
                         flood_disconnect = Some(ep);
                         (
                             RequestAction::Discard,
@@ -2026,6 +2106,8 @@ async fn handle_message_static(
 
             if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                 let _ = ctx.incoming_tx.send(cemi.clone());
+                let _ = ctx.event_tx.send(ServerEvent::Indication(cemi.clone()));
+                let _ = ctx.event_tx.send(ServerEvent::RawIndication(mut_cemi_bytes.clone()));
                 ctx.logger.log_indication(&cemi);
                 ctx.logger.log_indication_raw(&mut_cemi_bytes);
                 let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
@@ -2200,6 +2282,8 @@ async fn handle_message_static(
             let cemi_start = 6;
             if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                 let _ = ctx.incoming_tx.send(cemi.clone());
+                let _ = ctx.event_tx.send(ServerEvent::Indication(cemi.clone()));
+                let _ = ctx.event_tx.send(ServerEvent::RawIndication(msg[cemi_start..].to_vec()));
                 ctx.logger.log_indication(&cemi);
                 ctx.logger.log_indication_raw(&msg[cemi_start..]);
                 let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
@@ -2245,6 +2329,9 @@ async fn handle_message_static(
                     data: lost.to_buffer(),
                 });
                 let _ = ctx.incoming_tx.send(cemi.clone());
+                let _ = ctx.event_tx.send(ServerEvent::RoutingLostMessage(lost.clone()));
+                let _ = ctx.event_tx.send(ServerEvent::Indication(cemi.clone()));
+                let _ = ctx.event_tx.send(ServerEvent::RawIndication(body.to_vec()));
                 ctx.logger.log_indication(&cemi);
                 ctx.logger.log_indication_raw(body);
             }
@@ -2305,6 +2392,7 @@ async fn enqueue_packet_static(socket: &Arc<UdpSocket>, ctx: &HandlerContext, ce
         let mut pacing = ctx.multicast_pacing.lock().unwrap();
         if pacing.msg_queue.len() >= 100 {
             KnxNetIpServer::send_lost_message(socket, &ctx.options, 1);
+            let _ = ctx.event_tx.send(ServerEvent::QueueOverflow);
             return;
         }
 
@@ -2315,13 +2403,17 @@ async fn enqueue_packet_static(socket: &Arc<UdpSocket>, ctx: &HandlerContext, ce
             let wait_time = (delay * pacing.msg_queue.len()).min(100) as u16;
             KnxNetIpServer::send_routing_busy(socket, &ctx.options, wait_time);
             pacing.is_routing_busy = true;
+            let _ = ctx.event_tx.send(ServerEvent::RoutingBusy(true));
 
             let pacing_cloned = Arc::clone(&ctx.multicast_pacing);
             let notify_cloned = Arc::clone(&ctx.pacing_notify);
+            let event_tx_cloned = ctx.event_tx.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(wait_time as u64)).await;
                 let mut p = pacing_cloned.lock().unwrap();
                 p.is_routing_busy = false;
+                let _ = event_tx_cloned.send(ServerEvent::RoutingBusy(false));
+                let _ = event_tx_cloned.send(ServerEvent::RoutingReady);
                 notify_cloned.notify_one();
             });
         }
@@ -2366,12 +2458,16 @@ fn handle_routing_busy_static(_socket: &Arc<UdpSocket>, ctx: &HandlerContext, bu
         let wait_time = (busy.wait_time as u64) + rand_val;
 
         pacing.is_routing_busy = true;
+        let _ = ctx.event_tx.send(ServerEvent::RoutingBusy(true));
         let pacing_cloned = Arc::clone(&ctx.multicast_pacing);
         let notify_cloned = Arc::clone(&ctx.pacing_notify);
+        let event_tx_cloned = ctx.event_tx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(wait_time)).await;
             let mut p = pacing_cloned.lock().unwrap();
             p.is_routing_busy = false;
+            let _ = event_tx_cloned.send(ServerEvent::RoutingBusy(false));
+            let _ = event_tx_cloned.send(ServerEvent::RoutingReady);
             notify_cloned.notify_one();
         });
     }

@@ -19,22 +19,29 @@ pub struct GroupAddressCache {
     max_messages_per_address: usize,
     cache: HashMap<String, VecDeque<CacheEntry>>,
     dpt_config: HashMap<String, String>,
+    update_tx: tokio::sync::broadcast::Sender<CacheEntry>,
 }
 
 impl GroupAddressCache {
     fn new() -> Self {
+        let (update_tx, _) = tokio::sync::broadcast::channel(100);
         Self {
             enabled: false,
             max_addresses: 65535,
             max_messages_per_address: 10,
             cache: HashMap::new(),
             dpt_config: HashMap::new(),
+            update_tx,
         }
     }
 
     pub fn get_instance() -> &'static RwLock<GroupAddressCache> {
         static INSTANCE: OnceLock<RwLock<GroupAddressCache>> = OnceLock::new();
         INSTANCE.get_or_init(|| RwLock::new(GroupAddressCache::new()))
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<CacheEntry> {
+        self.update_tx.subscribe()
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -112,6 +119,8 @@ impl GroupAddressCache {
             group_address: target_address,
             decoded_value,
         };
+
+        let _ = self.update_tx.send(entry.clone());
 
         entries.push_front(entry);
 

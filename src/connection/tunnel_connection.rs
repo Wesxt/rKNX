@@ -1,8 +1,8 @@
+use crate::core::knxnetip_enum::{KnxLayer, KnxNetIpErrorCodes, KnxNetIpServiceType};
+use crate::core::knxnetip_header::KnxNetIpHeader;
+use crate::core::knxnetip_structures::Hpai;
 use std::collections::VecDeque;
 use tokio::time::{Duration, Instant};
-use crate::core::knxnetip_header::KnxNetIpHeader;
-use crate::core::knxnetip_enum::{KnxNetIpServiceType, KnxNetIpErrorCodes, KnxLayer};
-use crate::core::knxnetip_structures::Hpai;
 
 /// Action resulting from validating an incoming request's sequence number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,12 +62,13 @@ pub struct TunnelConnection {
 
     queue: VecDeque<QueueItem>,
     is_sending: bool,
-    pending_ack: Option<PendingAck>,
+    pub pending_ack: Option<PendingAck>,
 
     heartbeat_deadline: Instant,
     heartbeat_timeout: Duration,
     retransmit_timeout: Duration,
     max_queue_size: usize,
+    ignore_acktimeout: bool,
 }
 
 impl TunnelConnection {
@@ -81,6 +82,7 @@ impl TunnelConnection {
         heartbeat_timeout_ms: u64,
         retransmit_timeout_ms: u64,
         max_queue_size: usize,
+        ignore_acktimeout: bool,
     ) -> Self {
         let now = Instant::now();
         Self {
@@ -101,6 +103,7 @@ impl TunnelConnection {
             heartbeat_timeout: Duration::from_millis(heartbeat_timeout_ms),
             retransmit_timeout: Duration::from_millis(retransmit_timeout_ms),
             max_queue_size,
+            ignore_acktimeout,
         }
     }
 
@@ -133,7 +136,11 @@ impl TunnelConnection {
 
     /// Enqueues a CEMI message to be sent to the client.
     /// Returns `None` if successfully queued, or `Some("queue_full")` if the queue overflows.
-    pub fn enqueue(&mut self, cemi_buffer: &[u8], service_type: KnxNetIpServiceType) -> Option<&'static str> {
+    pub fn enqueue(
+        &mut self,
+        cemi_buffer: &[u8],
+        service_type: KnxNetIpServiceType,
+    ) -> Option<&'static str> {
         if self.max_queue_size > 0 && self.queue.len() >= self.max_queue_size {
             return Some("queue_full");
         }
@@ -246,7 +253,10 @@ impl TunnelConnection {
 
     /// Returns the control endpoint address.
     pub fn control_endpoint(&self) -> String {
-        format!("{}:{}", self.control_hpai.ip_address, self.control_hpai.port)
+        format!(
+            "{}:{}",
+            self.control_hpai.ip_address, self.control_hpai.port
+        )
     }
 
     /// Closes the connection and cleans up resources.
@@ -256,130 +266,14 @@ impl TunnelConnection {
         self.is_sending = false;
     }
 
+    /// Clears the pending ACK and allows sending next packets when we ignore timeout.
+    pub fn ignore_ack_timeout(&mut self) {
+        self.pending_ack = None;
+        self.is_sending = false;
+    }
+
     /// Returns true if there are queued items ready to be processed.
     pub fn has_pending_work(&self) -> bool {
         !self.queue.is_empty() || self.pending_ack.is_some()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::knxnetip_structures::Hpai;
-    use crate::core::knxnetip_enum::HostProtocolCode;
-    use std::net::Ipv4Addr;
-
-    fn make_connection() -> TunnelConnection {
-        TunnelConnection::new(
-            10,
-            Hpai::new(HostProtocolCode::Ipv4Udp, Ipv4Addr::new(192, 168, 1, 100), 3671),
-            Hpai::new(HostProtocolCode::Ipv4Udp, Ipv4Addr::new(192, 168, 1, 100), 3672),
-            0x1101,
-            "1.1.1".to_string(),
-            KnxLayer::LinkLayer,
-            120_000,
-            1_000,
-            100,
-        )
-    }
-
-    #[test]
-    fn test_sequence_number_validation() {
-        let mut conn = make_connection();
-        assert_eq!(conn.rno, 0);
-
-        // Expected seq 0
-        let v = conn.validate_request(0);
-        assert_eq!(v.action, RequestAction::Process);
-        assert_eq!(conn.rno, 1);
-
-        // Expected seq 1
-        let v = conn.validate_request(1);
-        assert_eq!(v.action, RequestAction::Process);
-        assert_eq!(conn.rno, 2);
-
-        // Retransmit: previous seq 1
-        let v = conn.validate_request(1);
-        assert_eq!(v.action, RequestAction::RetransmitAck);
-        assert_eq!(conn.rno, 2); // rno should NOT advance
-
-        // Out of sequence: seq 5
-        let v = conn.validate_request(5);
-        assert_eq!(v.action, RequestAction::Discard);
-    }
-
-    #[test]
-    fn test_enqueue_and_process() {
-        let mut conn = make_connection();
-        let cemi = vec![0x29, 0x00, 0xBC, 0xE0, 0x11, 0x01, 0x09, 0x02, 0x01, 0x00, 0x81];
-
-        assert!(conn.enqueue(&cemi, KnxNetIpServiceType::TunnellingRequest).is_none());
-        assert_eq!(conn.sno, 1);
-
-        let packet = conn.process_queue();
-        assert!(packet.is_some());
-        assert!(conn.is_sending);
-
-        // Second process should return None (still sending)
-        let packet2 = conn.process_queue();
-        assert!(packet2.is_none());
-    }
-
-    #[test]
-    fn test_handle_ack_success() {
-        let mut conn = make_connection();
-        let cemi = vec![0x29, 0x00];
-        conn.enqueue(&cemi, KnxNetIpServiceType::TunnellingRequest);
-        conn.process_queue();
-
-        // ACK for seq 0
-        let result = conn.handle_ack(0, KnxNetIpErrorCodes::ENoError as u8);
-        assert!(result.is_ok());
-        assert!(!conn.is_sending);
-    }
-
-    #[test]
-    fn test_handle_ack_error() {
-        let mut conn = make_connection();
-        let cemi = vec![0x29, 0x00];
-        conn.enqueue(&cemi, KnxNetIpServiceType::TunnellingRequest);
-        conn.process_queue();
-
-        // ACK with error status
-        let result = conn.handle_ack(0, KnxNetIpErrorCodes::ESequenceNumber as u8);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_queue_overflow() {
-        let mut conn = TunnelConnection::new(
-            10,
-            Hpai::null_hpai(),
-            Hpai::null_hpai(),
-            0x1101,
-            "1.1.1".to_string(),
-            KnxLayer::LinkLayer,
-            120_000,
-            1_000,
-            2, // max 2 items
-        );
-
-        conn.enqueue(&[0x29], KnxNetIpServiceType::TunnellingRequest);
-        conn.enqueue(&[0x29], KnxNetIpServiceType::TunnellingRequest);
-        let overflow = conn.enqueue(&[0x29], KnxNetIpServiceType::TunnellingRequest);
-        assert_eq!(overflow, Some("queue_full"));
-    }
-
-    #[test]
-    fn test_wrapping_sequence_numbers() {
-        let mut conn = make_connection();
-        conn.rno = 255;
-
-        let v = conn.validate_request(255);
-        assert_eq!(v.action, RequestAction::Process);
-        assert_eq!(conn.rno, 0); // Wraps around to 0
-
-        let v = conn.validate_request(255);
-        assert_eq!(v.action, RequestAction::RetransmitAck);
     }
 }

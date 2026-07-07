@@ -1,10 +1,10 @@
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use std::fs;
 use crate::connection::server::KnxNetIpServerOptions;
 use crate::connection::tunneling::{TunnelingOptions, TransportProtocol};
 use crate::core::knxnetip_enum::ConnectionType;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ServerConfig {
     pub ip: Option<String>,
     pub port: Option<u16>,
@@ -17,9 +17,10 @@ pub struct ServerConfig {
     pub use_all_interfaces: Option<bool>,
     pub is_routing: Option<bool>,
     pub max_pending_requests_per_client: Option<u32>,
+    pub ignore_acktimeout: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClientConfig {
     pub gateway_host: Option<String>, // maps to ip
     pub gateway_port: Option<u16>, // maps to port
@@ -34,7 +35,7 @@ pub struct ClientConfig {
     pub reconnect_delay_ms: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LoggingConfig {
     pub level: Option<String>,
     pub log_to_file: Option<bool>,
@@ -45,19 +46,19 @@ pub struct LoggingConfig {
     pub node_format: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AddressFilterConfig {
     pub addresses: Vec<String>,
     pub policy: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DirectionFilterConfig {
     pub group_address: Option<AddressFilterConfig>,
     pub individual_address: Option<AddressFilterConfig>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TpuartConfig {
     pub path: String,
     pub ack_group: Option<bool>,
@@ -65,7 +66,7 @@ pub struct TpuartConfig {
     pub individual_address: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsbConfig {
     pub path: Option<String>,
     pub vendor_id: Option<u16>,
@@ -73,7 +74,7 @@ pub struct UsbConfig {
     pub individual_address: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RouterConfig {
     pub individual_address: Option<String>,
     pub use_single_ia: Option<bool>,
@@ -86,12 +87,22 @@ pub struct RouterConfig {
     pub usb: Option<UsbConfig>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ApiConfig {
+    pub db_path: Option<String>,
+    pub ws_port: Option<u16>,
+    pub mqtt_host: Option<String>,
+    pub mqtt_port: Option<u16>,
+    pub mqtt_client_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub server: Option<ServerConfig>,
     pub client: Option<ClientConfig>,
     pub router: Option<RouterConfig>,
     pub logging: Option<LoggingConfig>,
+    pub api: Option<ApiConfig>,
 }
 
 use crate::connection::router::{RouterOptions, DirectionFilter, AddressFilter, FilterPolicy};
@@ -120,6 +131,7 @@ impl Config {
             use_all_interfaces: sc.use_all_interfaces.unwrap_or(false),
             is_routing: sc.is_routing.unwrap_or(true),
             max_pending_requests_per_client: sc.max_pending_requests_per_client.unwrap_or(100),
+            ignore_acktimeout: sc.ignore_acktimeout.unwrap_or(false),
         })
     }
 
@@ -185,6 +197,7 @@ impl Config {
             use_all_interfaces: sc.use_all_interfaces.unwrap_or(false),
             is_routing: sc.is_routing.unwrap_or(true),
             max_pending_requests_per_client: sc.max_pending_requests_per_client.unwrap_or(100),
+            ignore_acktimeout: sc.ignore_acktimeout.unwrap_or(false),
         });
 
         let tpuart = rc.tpuart.as_ref().map(|tc| TpuartOptions {

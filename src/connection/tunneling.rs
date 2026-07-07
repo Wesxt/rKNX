@@ -51,6 +51,18 @@ pub enum ActorMessage {
     Disconnect,
 }
 
+#[derive(Debug, Clone)]
+pub enum TunnelingEvent {
+    Connected { channel_id: u8 },
+    Disconnected,
+    Error(String),
+    Indication(Cemi),
+    RawIndication(Vec<u8>),
+    Send(Cemi),
+    RawMessage(Vec<u8>),
+    FeatureInfo { feature_id: u8, value: u8 },
+}
+
 /// Handles KNXnet/IP Tunneling connections for point-to-point communication with a KNX gateway.
 /// This class manages the connection state via an internal actor, sequence numbering for reliable delivery,
 /// heartbeat monitoring (ConnectionState), and message queuing over both UDP and TCP transports.
@@ -60,12 +72,14 @@ pub struct KnxTunneling {
     individual_address: Arc<RwLock<String>>,
     actor_tx: Arc<tokio::sync::Mutex<Option<mpsc::Sender<ActorMessage>>>>,
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<TunnelingEvent>,
     logger: Logger,
 }
 
 impl KnxTunneling {
     pub fn new(options: TunnelingOptions) -> Self {
         let (incoming_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(100);
         let logger = Logger::new("KNXTunneling");
         Self {
             options,
@@ -73,12 +87,17 @@ impl KnxTunneling {
             individual_address: Arc::new(RwLock::new("1.0.1".to_string())),
             actor_tx: Arc::new(tokio::sync::Mutex::new(None)),
             incoming_tx,
+            event_tx,
             logger,
         }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Cemi> {
         self.incoming_tx.subscribe()
+    }
+
+    pub fn subscribe_events(&self) -> broadcast::Receiver<TunnelingEvent> {
+        self.event_tx.subscribe()
     }
 }
 
@@ -112,6 +131,7 @@ impl KnxService for KnxTunneling {
         let state = self.state.clone();
         let individual_address = self.individual_address.clone();
         let _incoming_tx = self.incoming_tx.clone();
+        let event_tx_actor = self.event_tx.clone();
         let logger = self.logger.clone();
 
         {
@@ -319,6 +339,7 @@ impl KnxService for KnxTunneling {
                             *s = TunnelState::Connected;
                         }
                         logger.info("Connected to KNXnet/IP Gateway successfully.");
+                        let _ = event_tx_actor.send(TunnelingEvent::Connected { channel_id: channel });
                         if let Some(tx) = conn_done_tx.take() {
                             let _ = tx.send(Ok(()));
                         }
@@ -459,6 +480,7 @@ impl KnxService for KnxTunneling {
                                     if pkt.len() < 6 {
                                         continue;
                                     }
+                                    let _ = event_tx_actor.send(TunnelingEvent::RawMessage(pkt.clone()));
                                     let header = match KnxNetIpHeader::from_buffer(&pkt[..6]) {
                                         Ok(h) => h,
                                         Err(_) => continue,
@@ -504,6 +526,8 @@ impl KnxService for KnxTunneling {
                                                         let cemi_data = &body[header_len..];
                                                         if let Ok(cemi) = Cemi::from_buffer(cemi_data) {
                                                             let _ = _incoming_tx.send(cemi.clone());
+                                                            let _ = event_tx_actor.send(TunnelingEvent::Indication(cemi.clone()));
+                                                            let _ = event_tx_actor.send(TunnelingEvent::RawIndication(cemi_data.to_vec()));
                                                             logger.log_indication(&cemi);
                                                             logger.log_indication_raw(cemi_data);
                                                             let _ = GroupAddressCache::get_instance()
@@ -611,6 +635,7 @@ impl KnxService for KnxTunneling {
 
                 break;
             }
+            let _ = event_tx_actor.send(TunnelingEvent::Disconnected);
         });
 
         conn_done_rx.await.map_err(|_| KnxError::Protocol("Connection task closed unexpectedly".to_string()))?
@@ -627,6 +652,7 @@ impl KnxService for KnxTunneling {
             *s = TunnelState::Disconnected;
             self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
         }
+        let _ = self.event_tx.send(TunnelingEvent::Disconnected);
         Ok(())
     }
 
@@ -640,6 +666,8 @@ impl KnxService for KnxTunneling {
             .write()
             .unwrap()
             .process_cemi(cemi);
+
+        let _ = self.event_tx.send(TunnelingEvent::Send(cemi.clone()));
 
         let guard = self.actor_tx.lock().await;
         if let Some(tx) = &*guard {

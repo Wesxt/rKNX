@@ -1,11 +1,9 @@
 #[cfg(feature = "usb")]
 use hidapi::HidApi;
 
-#[cfg(feature = "usb")]
 use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
 
-#[cfg(feature = "usb")]
 use tokio::sync::oneshot;
 use tokio::sync::{broadcast, mpsc};
 #[cfg(feature = "usb")]
@@ -61,12 +59,27 @@ pub struct KnxUsbOptions {
     pub individual_address: String,
 }
 
+#[derive(Debug, Clone)]
+pub enum UsbEvent {
+    Connected,
+    Disconnected,
+    Error(String),
+    Indication(Cemi),
+    RawIndication(Vec<u8>),
+    Send(Vec<u8>),
+    BusConnected,
+    BusDisconnected,
+    EmiDiscovery(u8),
+    IndicationEmi(Cemi),
+}
+
 pub struct KnxUsbConnection {
     options: KnxUsbOptions,
     state: Arc<RwLock<KnxUsbState>>,
     supported_emi_type: Arc<RwLock<EmiType>>,
     bus_connected: Arc<RwLock<bool>>,
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<UsbEvent>,
     send_tx: mpsc::Sender<Vec<u8>>,
     #[allow(dead_code)]
     send_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<Vec<u8>>>>>,
@@ -79,6 +92,7 @@ pub struct KnxUsbConnection {
 impl KnxUsbConnection {
     pub fn new(options: KnxUsbOptions) -> Self {
         let (incoming_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(100);
         let (send_tx, send_rx) = mpsc::channel(100);
         let logger = Logger::new("KNXUSBConnection");
         Self {
@@ -87,6 +101,7 @@ impl KnxUsbConnection {
             supported_emi_type: Arc::new(RwLock::new(EmiType::CEmi)),
             bus_connected: Arc::new(RwLock::new(false)),
             incoming_tx,
+            event_tx,
             send_tx,
             send_rx: Arc::new(tokio::sync::Mutex::new(Some(send_rx))),
             logger,
@@ -98,6 +113,10 @@ impl KnxUsbConnection {
 
     pub fn subscribe(&self) -> broadcast::Receiver<Cemi> {
         self.incoming_tx.subscribe()
+    }
+
+    pub fn subscribe_events(&self) -> broadcast::Receiver<UsbEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Build a USB transfer frame (8-byte header + body).
@@ -175,9 +194,9 @@ impl KnxUsbConnection {
     }
 }
 
-#[cfg(feature = "usb")]
 struct UsbReaderContext {
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<UsbEvent>,
     bus_connected: Arc<RwLock<bool>>,
     supported_emi_type: Arc<RwLock<EmiType>>,
     discovery_tx: Arc<Mutex<Option<oneshot::Sender<EmiType>>>>,
@@ -262,6 +281,7 @@ impl KnxService for KnxUsbConnection {
 
             let reader_ctx = Arc::new(UsbReaderContext {
                 incoming_tx: self.incoming_tx.clone(),
+                event_tx: self.event_tx.clone(),
                 bus_connected: Arc::clone(&self.bus_connected),
                 supported_emi_type: Arc::clone(&self.supported_emi_type),
                 discovery_tx: Arc::clone(&discovery_sender),
@@ -297,7 +317,15 @@ impl KnxService for KnxUsbConnection {
                                     if data.len() >= 12 && data[..12] == wanted {
                                         let is_connected_to_bus = (data[12] & 0x01) == 1;
                                         let mut bc = reader_ctx.bus_connected.write().unwrap();
+                                        let old_bc = *bc;
                                         *bc = is_connected_to_bus;
+                                        if old_bc != is_connected_to_bus {
+                                            if is_connected_to_bus {
+                                                let _ = reader_ctx.event_tx.send(UsbEvent::BusConnected);
+                                            } else {
+                                                let _ = reader_ctx.event_tx.send(UsbEvent::BusDisconnected);
+                                            }
+                                        }
                                         continue;
                                     }
 
@@ -306,6 +334,7 @@ impl KnxService for KnxUsbConnection {
                                             // Discovery response
                                             let bitmask = payload[2];
                                             let discovered_emi = KnxUsbConnection::parse_emi_bitmask(bitmask);
+                                            let _ = reader_ctx.event_tx.send(UsbEvent::EmiDiscovery(discovered_emi as u8));
                                             let mut d_guard = reader_ctx.discovery_tx.lock().unwrap();
                                             if let Some(tx) = d_guard.take() {
                                                 let _ = tx.send(discovered_emi);
@@ -319,6 +348,8 @@ impl KnxService for KnxUsbConnection {
                                                 if current_emi_type == EmiType::CEmi {
                                                     if let Ok(cemi) = Cemi::from_buffer(&payload) {
                                                         let _ = reader_ctx.incoming_tx.send(cemi.clone());
+                                                        let _ = reader_ctx.event_tx.send(UsbEvent::Indication(cemi.clone()));
+                                                        let _ = reader_ctx.event_tx.send(UsbEvent::RawIndication(payload.clone()));
                                                         reader_ctx.logger.log_indication(&cemi);
                                                         reader_ctx.logger.log_indication_raw(&payload);
                                                         let _ = GroupAddressCache::get_instance()
@@ -329,6 +360,9 @@ impl KnxService for KnxUsbConnection {
                                                 } else {
                                                     if let Ok(cemi) = crate::core::cemi_adapter::CemiAdapter::emi_to_cemi(&payload) {
                                                         let _ = reader_ctx.incoming_tx.send(cemi.clone());
+                                                        let _ = reader_ctx.event_tx.send(UsbEvent::Indication(cemi.clone()));
+                                                        let _ = reader_ctx.event_tx.send(UsbEvent::RawIndication(payload.clone()));
+                                                        let _ = reader_ctx.event_tx.send(UsbEvent::IndicationEmi(cemi.clone()));
                                                         reader_ctx.logger.log_indication(&cemi);
                                                         reader_ctx.logger.log_indication_raw(&payload);
                                                         let _ = GroupAddressCache::get_instance()
@@ -428,6 +462,7 @@ impl KnxService for KnxUsbConnection {
             }
 
             self.logger.info("Connected to KNX USB device successfully.");
+            let _ = self.event_tx.send(UsbEvent::Connected);
 
             return Ok(());
         }
@@ -448,6 +483,7 @@ impl KnxService for KnxUsbConnection {
         self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
 
         self.logger.info("Disconnected from KNX USB device.");
+        let _ = self.event_tx.send(UsbEvent::Disconnected);
 
         {
             let mut bc = self.bus_connected.write().unwrap();
@@ -476,6 +512,7 @@ impl KnxService for KnxUsbConnection {
             .process_cemi(cemi);
 
         let frame = cemi.to_buffer();
+        let _ = self.event_tx.send(UsbEvent::Send(frame.clone()));
 
         let emi_frame = {
             let emi_type = *self.supported_emi_type.read().unwrap();

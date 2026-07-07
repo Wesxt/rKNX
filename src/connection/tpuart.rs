@@ -59,11 +59,23 @@ pub struct TpuartOptions {
     pub individual_address: String,
 }
 
+#[derive(Debug, Clone)]
+pub enum TpuartEvent {
+    Connected,
+    Disconnected,
+    Error(String),
+    Indication(Cemi),
+    RawIndication(Vec<u8>),
+    Send(Vec<u8>),
+    Confirmation(Vec<u8>),
+}
+
 pub struct TpuartConnection {
     options: TpuartOptions,
     state: Arc<RwLock<TpuartState>>,
     is_busmonitor_mode: Arc<RwLock<bool>>,
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<TpuartEvent>,
     send_tx: mpsc::Sender<Vec<u8>>,
     #[allow(dead_code)]
     send_rx: Arc<tokio::sync::Mutex<Option<mpsc::Receiver<Vec<u8>>>>>,
@@ -83,6 +95,7 @@ pub struct TpuartConnection {
 impl TpuartConnection {
     pub fn new(options: TpuartOptions) -> Self {
         let (incoming_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(100);
         let (send_tx, send_rx) = mpsc::channel(100);
         let logger = Logger::new("TPUART");
         Self {
@@ -90,6 +103,7 @@ impl TpuartConnection {
             state: Arc::new(RwLock::new(TpuartState::Disconnected)),
             is_busmonitor_mode: Arc::new(RwLock::new(false)),
             incoming_tx,
+            event_tx,
             send_tx,
             send_rx: Arc::new(tokio::sync::Mutex::new(Some(send_rx))),
             logger,
@@ -107,6 +121,10 @@ impl TpuartConnection {
 
     pub fn subscribe(&self) -> broadcast::Receiver<Cemi> {
         self.incoming_tx.subscribe()
+    }
+
+    pub fn subscribe_events(&self) -> broadcast::Receiver<TpuartEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Helper for checking if a received raw frame is an echo of the last sent frame.
@@ -147,6 +165,7 @@ struct TpuartContext {
     state: Arc<RwLock<TpuartState>>,
     is_busmonitor_mode: Arc<RwLock<bool>>,
     incoming_tx: broadcast::Sender<Cemi>,
+    event_tx: broadcast::Sender<TpuartEvent>,
     raw_write_tx: mpsc::Sender<Vec<u8>>,
     confirmation_tx: mpsc::Sender<ConfirmationEvent>,
     init_tx: Arc<Mutex<Option<oneshot::Sender<Result<(), KnxError>>>>>,
@@ -296,16 +315,19 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
 
     if byte == UART_SERVICES_BUSY {
         let _ = ctx.confirmation_tx.try_send(ConfirmationEvent::Busy);
+        let _ = ctx.event_tx.send(TpuartEvent::Confirmation(vec![byte]));
         return;
     }
 
     if byte == UART_SERVICES_LDATA_CON_POS {
         let _ = ctx.confirmation_tx.try_send(ConfirmationEvent::PosAck);
+        let _ = ctx.event_tx.send(TpuartEvent::Confirmation(vec![byte]));
         return;
     }
 
     if byte == UART_SERVICES_LDATA_CON_NEG {
         let _ = ctx.confirmation_tx.try_send(ConfirmationEvent::NegAck);
+        let _ = ctx.event_tx.send(TpuartEvent::Confirmation(vec![byte]));
         return;
     }
 
@@ -315,6 +337,8 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
             let old = *state_guard;
             *state_guard = TpuartState::Online;
             ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
+
+            let _ = ctx.event_tx.send(TpuartEvent::Connected);
 
             let mut init_guard = ctx.init_tx.lock().unwrap();
             if let Some(tx) = init_guard.take() {
@@ -364,6 +388,7 @@ impl KnxService for TpuartConnection {
                 state: Arc::clone(&self.state),
                 is_busmonitor_mode: Arc::clone(&self.is_busmonitor_mode),
                 incoming_tx: self.incoming_tx.clone(),
+                event_tx: self.event_tx.clone(),
                 raw_write_tx: raw_write_tx.clone(),
                 confirmation_tx,
                 init_tx: Arc::clone(&self.init_tx),
@@ -440,6 +465,8 @@ impl KnxService for TpuartConnection {
                                                 data: frame.clone(),
                                             });
                                             let _ = ctx_reader.incoming_tx.send(cemi.clone());
+                                            let _ = ctx_reader.event_tx.send(TpuartEvent::Indication(cemi.clone()));
+                                            let _ = ctx_reader.event_tx.send(TpuartEvent::RawIndication(frame.clone()));
                                             ctx_reader.logger.log_indication(&cemi);
                                             ctx_reader.logger.log_indication_raw(&frame);
                                         } else {
@@ -447,6 +474,8 @@ impl KnxService for TpuartConnection {
                                             emi_buf.extend_from_slice(&frame);
                                             if let Ok(cemi) = crate::core::cemi_adapter::CemiAdapter::emi_to_cemi(&emi_buf) {
                                                 let _ = ctx_reader.incoming_tx.send(cemi.clone());
+                                                let _ = ctx_reader.event_tx.send(TpuartEvent::Indication(cemi.clone()));
+                                                let _ = ctx_reader.event_tx.send(TpuartEvent::RawIndication(emi_buf.clone()));
                                                 ctx_reader.logger.log_indication(&cemi);
                                                 ctx_reader.logger.log_indication_raw(&emi_buf);
                                                 let _ = GroupAddressCache::get_instance()
@@ -601,6 +630,7 @@ impl KnxService for TpuartConnection {
         *state_g = TpuartState::Disconnected;
 
         self.logger.info("Disconnected from TPUART serial interface.");
+        let _ = self.event_tx.send(TpuartEvent::Disconnected);
 
         #[cfg(feature = "serial")]
         {
@@ -633,10 +663,12 @@ impl KnxService for TpuartConnection {
             frame
         };
 
-        self.send_tx
-            .send(emi_frame)
-            .await
-            .map_err(|_| KnxError::InvalidParametersForDpt)
+        let frame_clone = emi_frame.clone();
+        let send_res = self.send_tx.send(emi_frame).await;
+        if send_res.is_ok() {
+            let _ = self.event_tx.send(TpuartEvent::Send(frame_clone));
+        }
+        send_res.map_err(|_| KnxError::InvalidParametersForDpt)
     }
 
     fn connection_state(&self) -> String {

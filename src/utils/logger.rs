@@ -3,7 +3,6 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::sync::{OnceLock, RwLock};
-use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
@@ -36,15 +35,12 @@ impl LogLevel {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct LoggerOptions {
     pub level: LogLevel,
     pub enabled: bool,
     pub log_to_file: bool,
     pub log_dir: String,
     pub log_filename: String,
-    pub indication_tx: broadcast::Sender<Cemi>,
-    pub indication_raw_tx: broadcast::Sender<Vec<u8>>,
     pub indications: bool,
     pub indications_raw: bool,
     pub node_format: bool,
@@ -52,16 +48,12 @@ pub struct LoggerOptions {
 
 impl Default for LoggerOptions {
     fn default() -> Self {
-        let (indication_tx, _) = broadcast::channel(256);
-        let (indication_raw_tx, _) = broadcast::channel(256);
         Self {
             level: LogLevel::Info,
             enabled: true,
             log_to_file: false,
             log_dir: "./logs".to_string(),
             log_filename: String::new(),
-            indication_tx,
-            indication_raw_tx,
             indications: false,
             indications_raw: false,
             node_format: false,
@@ -106,18 +98,6 @@ pub fn setup_logger(
     if let Some(nf) = node_format {
         opts.node_format = nf;
     }
-}
-
-pub fn subscribe_indication() -> broadcast::Receiver<Cemi> {
-    global_options().read().unwrap().indication_tx.subscribe()
-}
-
-pub fn subscribe_indication_raw() -> broadcast::Receiver<Vec<u8>> {
-    global_options()
-        .read()
-        .unwrap()
-        .indication_raw_tx
-        .subscribe()
 }
 
 #[derive(Clone, Debug)]
@@ -237,7 +217,6 @@ impl Logger {
 
     pub fn log_indication(&self, cemi: &Cemi) {
         let opts = global_options().read().unwrap();
-        let _ = opts.indication_tx.send(cemi.clone());
         if opts.indications {
             self.info(&format!("INDICATION: {}", cemi.describe(opts.node_format)));
         }
@@ -245,7 +224,6 @@ impl Logger {
 
     pub fn log_indication_raw(&self, data: &[u8]) {
         let opts = global_options().read().unwrap();
-        let _ = opts.indication_raw_tx.send(data.to_vec());
         if opts.indications_raw {
             let hex_str = data
                 .iter()
