@@ -66,7 +66,9 @@ impl WebSocketServer {
                             "action": "connected",
                             "message": "KNX WebSocket Gateway connected (powered by rKNX in Rust)"
                         });
-                        let _ = event_sender_tx.send(Message::Text(connected_payload.to_string())).await;
+                        let _ = event_sender_tx
+                            .send(Message::Text(connected_payload.to_string()))
+                            .await;
 
                         // 2. Send "knx_connection_status"
                         let conn_info = manager_cloned.get_connection_info();
@@ -76,11 +78,15 @@ impl WebSocketServer {
                             "type": conn_info.as_ref().map(|c| &c.0).unwrap_or(&"none".to_string()),
                             "options": conn_info.as_ref().map(|c| &c.2).unwrap_or(&serde_json::Value::Null)
                         });
-                        let _ = event_sender_tx.send(Message::Text(status_payload.to_string())).await;
+                        let _ = event_sender_tx
+                            .send(Message::Text(status_payload.to_string()))
+                            .await;
 
                         // 3. Send "subscriptions_list"
                         if let Ok(subs_list) = manager_cloned.get_subscriptions_list() {
-                            let _ = event_sender_tx.send(Message::Text(subs_list.to_string())).await;
+                            let _ = event_sender_tx
+                                .send(Message::Text(subs_list.to_string()))
+                                .await;
                         }
 
                         // Spawn a task to send messages to the ws client
@@ -152,7 +158,10 @@ impl WebSocketServer {
 
         let result = match action {
             "connect_knx" => {
-                let conn_type_raw = req.get("connectionType").and_then(|c| c.as_str()).unwrap_or("");
+                let conn_type_raw = req
+                    .get("connectionType")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 let conn_type = match conn_type_raw.to_lowercase().as_str() {
                     "tunneling" => "Tunneling".to_string(),
                     "router" => "Router".to_string(),
@@ -161,7 +170,7 @@ impl WebSocketServer {
                     "usb" => "Usb".to_string(),
                     other => other.to_string(),
                 };
-                
+
                 let raw_opts = req.get("connectionOptions").cloned().unwrap_or(json!({}));
                 let mut mapped_opts = json!({});
                 if let Some(obj) = raw_opts.as_object() {
@@ -215,27 +224,39 @@ impl WebSocketServer {
 
                 match manager.connect(&conn_type, mapped_opts).await {
                     Ok(_) => Ok(json!({ "action": "connect_knx_ack", "success": true })),
-                    Err(e) => Ok(json!({ "action": "connect_knx_ack", "success": false, "error": format!("{:?}", e) })),
+                    Err(e) => Ok(
+                        json!({ "action": "connect_knx_ack", "success": false, "error": format!("{:?}", e) }),
+                    ),
                 }
             }
             "disconnect_knx" => match manager.disconnect().await {
                 Ok(_) => Ok(json!({ "action": "disconnect_knx_ack", "success": true })),
-                Err(e) => Ok(json!({ "action": "disconnect_knx_ack", "success": false, "error": format!("{:?}", e) })),
+                Err(e) => Ok(
+                    json!({ "action": "disconnect_knx_ack", "success": false, "error": format!("{:?}", e) }),
+                ),
             },
             "config_dpt" => {
-                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                let addr = req
+                    .get("groupAddress")
+                    .and_then(|g| g.as_str())
+                    .unwrap_or("");
                 let dpt = req.get("dpt").and_then(|d| d.as_str()).unwrap_or("");
                 if addr.is_empty() || dpt.is_empty() {
                     Err("Missing groupAddress or dpt".to_string())
                 } else {
                     match manager.set_dpt(addr, dpt) {
-                        Ok(_) => Ok(json!({ "action": "config_dpt_ack", "groupAddress": addr, "dpt": dpt })),
+                        Ok(_) => Ok(
+                            json!({ "action": "config_dpt_ack", "groupAddress": addr, "dpt": dpt }),
+                        ),
                         Err(e) => Err(format!("Set DPT failed: {:?}", e)),
                     }
                 }
             }
             "subscribe" => {
-                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                let addr = req
+                    .get("groupAddress")
+                    .and_then(|g| g.as_str())
+                    .unwrap_or("");
                 let name = req.get("name").and_then(|n| n.as_str());
                 if addr.is_empty() {
                     Err("Missing groupAddress".to_string())
@@ -247,7 +268,10 @@ impl WebSocketServer {
                 }
             }
             "unsubscribe" => {
-                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                let addr = req
+                    .get("groupAddress")
+                    .and_then(|g| g.as_str())
+                    .unwrap_or("");
                 if addr.is_empty() {
                     Err("Missing groupAddress".to_string())
                 } else {
@@ -261,7 +285,10 @@ impl WebSocketServer {
                 if !manager.is_connected() {
                     Err("Connection required before sending commands".to_string())
                 } else {
-                    let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                    let addr = req
+                        .get("groupAddress")
+                        .and_then(|g| g.as_str())
+                        .unwrap_or("");
                     if addr.is_empty() {
                         Err("Missing groupAddress".to_string())
                     } else {
@@ -276,7 +303,10 @@ impl WebSocketServer {
                 if !manager.is_connected() {
                     Err("Connection required before sending commands".to_string())
                 } else {
-                    let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                    let addr = req
+                        .get("groupAddress")
+                        .and_then(|g| g.as_str())
+                        .unwrap_or("");
                     let value = req.get("value").cloned().unwrap_or(Value::Null);
                     let dpt_opt = req.get("dpt").and_then(|d| d.as_str());
                     if addr.is_empty() || value.is_null() {
@@ -293,28 +323,47 @@ impl WebSocketServer {
                 }
             }
             "query" => {
-                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                let addr = req
+                    .get("groupAddress")
+                    .and_then(|g| g.as_str())
+                    .unwrap_or("");
                 if addr.is_empty() {
                     Err("Missing groupAddress".to_string())
                 } else {
                     match manager.get_history(100) {
                         Ok(hist) => {
-                            let results = hist.iter().map(|item| {
-                                let ga = item.get("group_address").and_then(|v| v.as_str()).unwrap_or("");
-                                let val = item.get("value").cloned().unwrap_or(Value::Null);
-                                let cemi_desc = item.get("description").cloned().unwrap_or(Value::Null);
-                                let apci_cmd = cemi_desc.get("tpdu").and_then(|t| t.get("apdu")).and_then(|a| a.get("command")).and_then(|c| c.as_str()).unwrap_or("AGroupValueWrite");
-                                
-                                let formatted_time = chrono::Local::now().naive_local().format("%H:%M:%S").to_string();
-                                
-                                json!({
-                                    "groupAddress": ga,
-                                    "decodedValue": val,
-                                    "apci": apci_cmd,
-                                    "cemi": cemi_desc,
-                                    "timestamp": formatted_time
+                            let results = hist
+                                .iter()
+                                .map(|item| {
+                                    let ga = item
+                                        .get("group_address")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let val = item.get("value").cloned().unwrap_or(Value::Null);
+                                    let cemi_desc =
+                                        item.get("description").cloned().unwrap_or(Value::Null);
+                                    let apci_cmd = cemi_desc
+                                        .get("tpdu")
+                                        .and_then(|t| t.get("apdu"))
+                                        .and_then(|a| a.get("apci"))
+                                        .and_then(|a| a.get("command"))
+                                        .and_then(|c| c.as_str())
+                                        .unwrap_or("AGroupValueWrite");
+
+                                    let formatted_time = chrono::Local::now()
+                                        .naive_local()
+                                        .format("%H:%M:%S")
+                                        .to_string();
+
+                                    json!({
+                                        "groupAddress": ga,
+                                        "decodedValue": val,
+                                        "apci": apci_cmd,
+                                        "cemi": cemi_desc,
+                                        "timestamp": formatted_time
+                                    })
                                 })
-                            }).collect::<Vec<Value>>();
+                                .collect::<Vec<Value>>();
                             Ok(json!({
                                 "action": "query_result",
                                 "groupAddress": addr,
@@ -334,7 +383,7 @@ impl WebSocketServer {
                             let dpt = item.get("dpt").and_then(|d| d.as_str());
                             let name = item.get("name").and_then(|n| n.as_str());
                             let desc = item.get("description").and_then(|d| d.as_str());
-                            
+
                             if let Some(dpt_str) = dpt {
                                 let _ = manager.set_dpt(address, dpt_str);
                             }
