@@ -497,6 +497,7 @@ impl ApiManager {
     pub fn get_subscriptions_list(&self) -> Result<Value, KnxError> {
         let subs = self.db.get_all_subscriptions().map_err(|_| KnxError::InvalidParametersForDpt)?;
         Ok(serde_json::json!({
+            "action": "subscriptions_list",
             "subscriptions": subs
         }))
     }

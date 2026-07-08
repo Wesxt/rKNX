@@ -126,6 +126,14 @@ impl DbManager {
         name: Option<&str>,
         description: Option<&str>,
     ) -> Result<(), rusqlite::Error> {
+        let normalized_dpt = dpt.map(|d| {
+            let upper = d.trim().to_uppercase();
+            if upper.starts_with("DPT") {
+                upper.split_at(3).1.to_string()
+            } else {
+                upper
+            }
+        });
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO group_addresses (address, dpt, name, description, updated_at)
@@ -135,7 +143,7 @@ impl DbManager {
                 name = COALESCE(?6, name),
                 description = COALESCE(?7, description),
                 updated_at = datetime('now');",
-            params![address, dpt, name, description, dpt, name, description],
+            params![address, normalized_dpt, name, description, normalized_dpt, name, description],
         )?;
         Ok(())
     }
@@ -168,11 +176,20 @@ impl DbManager {
         )?;
         let rows = stmt.query_map([], |row| {
             let address: String = row.get(0)?;
-            let dpt: Option<String> = row.get(1)?;
+            let raw_dpt: Option<String> = row.get(1)?;
             let last_value_str: Option<String> = row.get(2)?;
             let name: Option<String> = row.get(3)?;
             let description: Option<String> = row.get(4)?;
             let updated_at: Option<String> = row.get(5)?;
+
+            let dpt = raw_dpt.map(|d| {
+                let upper = d.trim().to_uppercase();
+                if upper.starts_with("DPT") {
+                    upper.split_at(3).1.to_string()
+                } else {
+                    upper
+                }
+            });
 
             let last_value = last_value_str
                 .and_then(|v| serde_json::from_str(&v).ok())
