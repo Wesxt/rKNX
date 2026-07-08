@@ -323,7 +323,72 @@ impl WebSocketServer {
                 }
             }
             "discover" => {
-                Ok(json!({ "action": "discover_result", "devices": [] }))
+                let mut local_ips = Vec::new();
+                if let Ok(interfaces) = if_addrs::get_if_addrs() {
+                    for iface in interfaces {
+                        if !iface.is_loopback() {
+                            if let std::net::IpAddr::V4(ipv4_addr) = iface.ip() {
+                                local_ips.push(ipv4_addr);
+                            }
+                        }
+                    }
+                }
+                if local_ips.is_empty() {
+                    local_ips.push(std::net::Ipv4Addr::new(0, 0, 0, 0));
+                }
+
+                let mut tasks = Vec::new();
+                for ip in local_ips {
+                    let ip_str = ip.to_string();
+                    tasks.push(tokio::spawn(async move {
+                        crate::connection::server::KnxNetIpServer::discover(
+                            &ip_str,
+                            "224.0.23.12",
+                            3671,
+                            3000,
+                            true,
+                        )
+                        .await
+                        .unwrap_or_default()
+                    }));
+                }
+
+                let mut all_devices = std::collections::HashMap::new();
+                for task in tasks {
+                    if let Ok(devices) = task.await {
+                        for dev in devices {
+                            let key = format!("{}:{}", dev.ip, dev.port);
+                            all_devices.insert(key, dev);
+                        }
+                    }
+                }
+
+                let devices_json: Vec<serde_json::Value> = all_devices
+                    .into_values()
+                    .map(|dev| {
+                        let mac_str = format!(
+                            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                            dev.mac_address[0],
+                            dev.mac_address[1],
+                            dev.mac_address[2],
+                            dev.mac_address[3],
+                            dev.mac_address[4],
+                            dev.mac_address[5]
+                        );
+                        json!({
+                            "friendlyName": dev.friendly_name,
+                            "ip": dev.ip.to_string(),
+                            "port": dev.port,
+                            "individualAddress": dev.individual_address,
+                            "macAddress": mac_str,
+                        })
+                    })
+                    .collect();
+
+                Ok(json!({
+                    "action": "discover_result",
+                    "devices": devices_json,
+                }))
             }
             "status" => {
                 let conn_info = manager.get_connection_info();

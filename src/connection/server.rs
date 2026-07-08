@@ -1415,28 +1415,68 @@ impl KnxService for KnxNetIpServer {
             *socket_guard = Some(Arc::clone(&socket));
         }
 
-        if self.options.is_routing {
-            let mcast_ip = Ipv4Addr::from_str(&self.options.ip)
-                .map_err(|e| KnxError::Protocol(format!("Invalid multicast IP: {}", e)))?;
-            let local_ip =
-                Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
+        let mcast_ip = Ipv4Addr::from_str(&self.options.ip)
+            .map_err(|e| KnxError::Protocol(format!("Invalid multicast IP: {}", e)))?;
+        
+        let mut joined_interfaces = std::collections::HashSet::new();
+        let primary_local_ip =
+            Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
 
-            // Join multicast group
-            if let Err(_) = socket.join_multicast_v4(mcast_ip, local_ip) {
-                {
-                    let mut s = self.state.write().unwrap();
-                    let old = *s;
-                    *s = KnxServerState::Faulted;
-                    self.logger.info(
-                        &format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase(),
-                    );
+        if !primary_local_ip.is_unspecified() {
+            match socket.join_multicast_v4(mcast_ip, primary_local_ip) {
+                Ok(_) => {
+                    joined_interfaces.insert(primary_local_ip);
+                    self.logger.info(&format!("Joined multicast on primary interface ({})", primary_local_ip));
                 }
-                return Err(KnxError::Protocol(
-                    "Failed to join multicast group".to_string(),
-                ));
+                Err(e) => {
+                    self.logger.warn(&format!("Failed to join multicast on primary interface {}: {:?}", primary_local_ip, e));
+                }
             }
-            let _ = socket.set_multicast_loop_v4(true);
         }
+
+        // Try to join multicast on all other interfaces
+        if let Ok(interfaces) = if_addrs::get_if_addrs() {
+            for iface in interfaces {
+                if !iface.is_loopback() {
+                    if let std::net::IpAddr::V4(ipv4_addr) = iface.ip() {
+                        if !joined_interfaces.contains(&ipv4_addr) {
+                            match socket.join_multicast_v4(mcast_ip, ipv4_addr) {
+                                Ok(_) => {
+                                    joined_interfaces.insert(ipv4_addr);
+                                    self.logger.info(&format!("Joined multicast on interface {} ({})", iface.name, ipv4_addr));
+                                }
+                                Err(_) => {
+                                    // Ignore virtual/non-multicast interfaces
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if joined_interfaces.is_empty() {
+            match socket.join_multicast_v4(mcast_ip, Ipv4Addr::new(0, 0, 0, 0)) {
+                Ok(_) => {
+                    self.logger.info("Joined multicast on fallback 0.0.0.0");
+                }
+                Err(e) => {
+                    {
+                        let mut s = self.state.write().unwrap();
+                        let old = *s;
+                        *s = KnxServerState::Faulted;
+                        self.logger.info(
+                            &format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase(),
+                        );
+                    }
+                    return Err(KnxError::Protocol(format!(
+                        "Failed to join multicast group on any interface: {:?}", e
+                    )));
+                }
+            }
+        }
+
+        let _ = socket.set_multicast_loop_v4(true);
 
         let recv_socket = Arc::clone(&socket);
         let mut rx = self.socket_rx.lock().await.take().unwrap();
