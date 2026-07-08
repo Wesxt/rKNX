@@ -20,53 +20,258 @@ The API enables managing connection states, configuring Datapoint Types (DPTs), 
 
 By default, the WebSocket server listens on port `8080` (configurable via `api.ws_port` in `config.toml`). All requests and responses are framed in JSON.
 
-### Request Payload Format
+### WebSocket Action Details
 
-```json
-{
-  "id": "unique_message_id",
-  "action": "action_name",
-  "connection_type": "Optional (Router | Server | Tunneling | Usb | Tpuart)",
-  "options": { ... "action_parameters" ... },
-  "group_address": "Optional (e.g., 1/1/1)",
-  "dpt": "Optional (e.g., 1.001)",
-  "value": "Optional (value to write)"
-}
-```
+Below is the exact JSON structure for every action request and its corresponding successful `response` object.
 
-### Response Payload Format
-
-- **Success**:
+#### 1. `connect`
+Establishes a connection to the KNX bus.
+- **Request**:
   ```json
   {
-    "id": "unique_message_id",
+    "id": "1",
+    "action": "connect",
+    "connection_type": "Tunneling",
+    "options": {
+      "gateway_host": "192.168.1.10",
+      "gateway_port": 3671,
+      "transport": "Udp",
+      "connection_type": "TunnelConnection",
+      "auto_reconnect": true
+    }
+  }
+  ```
+  *(Supported `connection_type` values: `"Router"`, `"Server"`, `"Tunneling"`, `"Usb"`, `"Tpuart"`. The `options` object mirrors their respective sections from `config.toml`)*
+- **Response**:
+  ```json
+  {
+    "id": "1",
     "success": true,
-    "response": { ... "return_data" ... }
+    "response": { "connected": true }
   }
   ```
-- **Error**:
+
+#### 2. `disconnect`
+Closes the active connection.
+- **Request**:
   ```json
   {
-    "id": "unique_message_id",
-    "success": false,
-    "error": "Error description message"
+    "id": "2",
+    "action": "disconnect"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "2",
+    "success": true,
+    "response": { "disconnected": true }
   }
   ```
 
-### Supported Actions
+#### 3. `subscribe`
+Subscribes to real-time events for a group address.
+- **Request**:
+  ```json
+  {
+    "id": "3",
+    "action": "subscribe",
+    "group_address": "1/1/1"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "3",
+    "success": true,
+    "response": { "subscribed": "1/1/1" }
+  }
+  ```
 
-| Action | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `connect` | Connects to the bus using a specified backend connection. | `connection_type`, `options` |
-| `disconnect` | Disconnects the active backend connection. | None |
-| `subscribe` | Subscribes to real-time events for a group address. | `group_address` |
-| `unsubscribe` | Unsubscribes from events for a group address. | `group_address` |
-| `set_dpt` | Configures the Datapoint Type (DPT) for a group address. | `group_address`, `dpt` |
-| `write` | Sends a group value write request (`AGroupValueWrite`). | `group_address`, `value` |
-| `read` | Sends a group value read request (`AGroupValueRead`). | `group_address` |
-| `status` | Retrieves daemon status, active connections, and subscriptions. | None |
-| `get_history` | Queries the DB indication logs cache. | `limit` (default is 50) |
-| `set_retention` | Sets the maximum telemetry retention limit in seconds. | `seconds` |
+#### 4. `unsubscribe`
+Removes a group address subscription.
+- **Request**:
+  ```json
+  {
+    "id": "4",
+    "action": "unsubscribe",
+    "group_address": "1/1/1"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "4",
+    "success": true,
+    "response": { "unsubscribed": "1/1/1" }
+  }
+  ```
+
+#### 5. `set_dpt`
+Associates a Datapoint Type (DPT) with a group address to decode/encode values.
+- **Request**:
+  ```json
+  {
+    "id": "5",
+    "action": "set_dpt",
+    "group_address": "1/1/1",
+    "dpt": "1.001"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "5",
+    "success": true,
+    "response": { "configured": "1/1/1", "dpt": "1.001" }
+  }
+  ```
+
+#### 6. `write`
+Writes a value to a group address on the KNX bus. Requires a DPT to have been configured for the address first. The `value` field must match the specific structured DPT interface (fully compatible with `DPTs.ts`).
+
+- **Requests (Examples based on DPT type)**:
+  - **DPT 1 (Switching/Boolean)**:
+    ```json
+    {
+      "id": "6a",
+      "action": "write",
+      "group_address": "1/1/1",
+      "value": { "value": true }
+    }
+    ```
+    *(For backwards compatibility, passing raw value directly e.g. `"value": true` is also supported)*
+  
+  - **DPT 3 (Control Dimming/Blinds)**:
+    ```json
+    {
+      "id": "6b",
+      "action": "write",
+      "group_address": "1/1/2",
+      "value": { "control": 1, "stepCode": 5 }
+    }
+    ```
+  
+  - **DPT 232 (RGB Color)**:
+    ```json
+    {
+      "id": "6c",
+      "action": "write",
+      "group_address": "1/1/3",
+      "value": { "R": 255, "G": 0, "B": 128 }
+    }
+    ```
+
+- **Response**:
+  ```json
+  {
+    "id": "6",
+    "success": true,
+    "response": { "written": true }
+  }
+  ```
+
+#### 7. `read`
+Sends a group value read request (`AGroupValueRead`) to query the state of a group address.
+- **Request**:
+  ```json
+  {
+    "id": "7",
+    "action": "read",
+    "group_address": "1/1/1"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "7",
+    "success": true,
+    "response": { "read_sent": true }
+  }
+  ```
+
+#### 8. `status`
+Retrieves the current daemon runtime information.
+- **Request**:
+  ```json
+  {
+    "id": "8",
+    "action": "status"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "8",
+    "success": true,
+    "response": {
+      "connected": true,
+      "connection_type": "Tunneling",
+      "individual_address": "1.1.255",
+      "subscriptions": ["1/1/1", "1/1/2"],
+      "retention_seconds": 604800
+    }
+  }
+  ```
+
+#### 9. `get_history`
+Retrieves past logged indications from the SQLite database.
+- **Request**:
+  ```json
+  {
+    "id": "9",
+    "action": "get_history",
+    "limit": 2
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "9",
+    "success": true,
+    "response": [
+      {
+        "id": 15,
+        "timestamp": 1720310400,
+        "group_address": "1/1/1",
+        "cemi_hex": "2900bce0000011010100",
+        "description": {
+          "obj": "L_Data_ind",
+          "message_code": 41,
+          "source_address": "1.1.10",
+          "destination_address": "1/1/1",
+          "control_field1": {
+            "obj": "ControlField",
+            "hex": "0xbc",
+            "frame_type": "Data",
+            "priority": "Low",
+            "confirm": "NoConfirm"
+          }
+        },
+        "value": true
+      }
+    ]
+  }
+  ```
+
+#### 10. `set_retention`
+Updates the automatic telemetry database retention period.
+- **Request**:
+  ```json
+  {
+    "id": "10",
+    "action": "set_retention",
+    "seconds": 86400
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "id": "10",
+    "success": true,
+    "response": { "retention_configured": 86400 }
+  }
+  ```
 
 ---
 
@@ -79,8 +284,20 @@ When a group address that has an active subscription receives a packet, an event
   "event": "indication",
   "group_address": "1/1/1",
   "timestamp": 1720310400,
-  "description": "CEMI {\n  obj: 'L_Data_ind',\n  messageCode: 41,\n  ...",
-  "value": "Some(Dpt1(true))"
+  "description": {
+    "obj": "L_Data_ind",
+    "message_code": 41,
+    "source_address": "1.1.10",
+    "destination_address": "1/1/1",
+    "control_field1": {
+      "obj": "ControlField",
+      "hex": "0xbc",
+      "frame_type": "Data",
+      "priority": "Low",
+      "confirm": "NoConfirm"
+    }
+  },
+  "value": true
 }
 ```
 
@@ -160,12 +377,24 @@ Response payloads are formatted as JSON:
     "event": "indication",
     "group_address": "1/1/1",
     "timestamp": 1720310400,
-    "description": "CEMI {\n  obj: 'L_Data_ind', ...",
-    "value": "Some(Dpt1(true))"
+    "description": {
+      "obj": "L_Data_ind",
+      "message_code": 41,
+      "source_address": "1.1.10",
+      "destination_address": "1/1/1",
+      "control_field1": {
+        "obj": "ControlField",
+        "hex": "0xbc",
+        "frame_type": "Data",
+        "priority": "Low",
+        "confirm": "NoConfirm"
+      }
+    },
+    "value": true
   }
   ```
 - **Group Address Value State**: `rknx/event/state/<group_address>`
-  - Publishes the plain decoded value directly as a string (e.g. `"Dpt1(true)"` or `"Dpt5(128)"`) for quick and straightforward integrations (e.g., Home Assistant).
+  - Publishes the plain decoded value directly as a string (e.g. `"true"` or `"128"`) for quick and straightforward integrations (e.g., Home Assistant).
 
 ---
 

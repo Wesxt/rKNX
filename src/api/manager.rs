@@ -6,7 +6,10 @@ use crate::connection::tpuart::{TpuartConnection, TpuartOptions};
 use crate::connection::router::Router;
 use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::core::cemi::Cemi;
-use crate::core::data::knx_data_decode::{DptValue, KnxDataDecode};
+use crate::core::data::knx_data_decode::{
+    DptValue, KnxDataDecode, Dpt2Value, Dpt3Value, Dpt6020Value,
+    Dpt10Value, Dpt11Value, Dpt232Value, Dpt251Val, Dpt251Value,
+};
 use crate::errors::KnxError;
 use crate::api::db::DbManager;
 use crate::utils::logger::Logger;
@@ -233,21 +236,22 @@ impl ApiManager {
                         let timestamp = entry.timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
                         let addr = &entry.group_address;
                         let cemi_raw = entry.cemi.to_buffer();
-                        let description = entry.cemi.describe(true);
-                        let val_str = entry.decoded_value.as_ref().map(|v| format!("{:?}", v));
+                        let desc_json = entry.cemi.describe_json();
+                        let desc_db_str = desc_json.to_string();
+                        let val_json = entry.decoded_value.as_ref().map(|v| dpt_value_to_json(v)).unwrap_or(serde_json::Value::Null);
+                        let val_db_str = if val_json.is_null() { None } else { Some(val_json.to_string()) };
 
                         // 1. Non-blocking SQLite DB save
                         let db_cloned = db.clone();
                         let addr_cloned = addr.clone();
-                        let desc_cloned = description.clone();
-                        let val_cloned = val_str.clone();
+                        let desc_cloned = desc_db_str.clone();
                         tokio::task::spawn_blocking(move || {
                             let _ = db_cloned.save_indication(
                                 timestamp,
                                 &addr_cloned,
                                 &cemi_raw,
                                 &desc_cloned,
-                                val_cloned.as_deref(),
+                                val_db_str.as_deref(),
                             );
                         });
 
@@ -262,8 +266,8 @@ impl ApiManager {
                                 "event": "indication",
                                 "group_address": addr,
                                 "timestamp": timestamp,
-                                "description": description,
-                                "value": val_str,
+                                "description": desc_json,
+                                "value": val_json,
                             });
                             let _ = broadcaster.send(event_payload);
                         }
@@ -478,24 +482,167 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
     let resolved = KnxDataDecode::fallback_dpt(dpt_num);
     match resolved {
         1 => {
-            let b = val.as_bool().ok_or(KnxError::InvalidParametersForDpt)?;
+            let b = val.get("value").and_then(|v| v.as_bool())
+                .or_else(|| val.as_bool())
+                .ok_or(KnxError::InvalidParametersForDpt)?;
             Ok(DptValue::Dpt1(b))
         }
+        2 => {
+            let control = val.get("control").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let value = val.get("value").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            Ok(DptValue::Dpt2(Dpt2Value {
+                control,
+                value,
+                description: String::new(),
+            }))
+        }
+        3007 | 3008 => {
+            let control = val.get("control").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let step_code = val.get("stepCode")
+                .or_else(|| val.get("stepCodeB"))
+                .or_else(|| val.get("stepCodeCT"))
+                .and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            Ok(DptValue::Dpt3(Dpt3Value {
+                control,
+                step_code,
+                action: String::new(),
+                description: String::new(),
+            }))
+        }
+        4001 | 4002 => {
+            let s = val.get("char").and_then(|v| v.as_str())
+                .or_else(|| val.as_str())
+                .ok_or(KnxError::InvalidParametersForDpt)?;
+            let c = s.chars().next().ok_or(KnxError::InvalidParametersForDpt)?;
+            Ok(DptValue::Dpt4(c))
+        }
         5 => {
-            let u = val.as_u64().ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let u = val.get("value").and_then(|v| v.as_u64())
+                .or_else(|| val.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt5(u))
         }
-        9 | 14 => {
-            let f = val.as_f64().ok_or(KnxError::InvalidParametersForDpt)? as f32;
-            if resolved == 9 {
-                Ok(DptValue::Dpt9(f))
-            } else {
-                Ok(DptValue::Dpt14(f))
-            }
+        5001 => {
+            let pct = val.get("value").and_then(|v| v.as_f64())
+                .or_else(|| val.as_f64())
+                .ok_or(KnxError::InvalidParametersForDpt)?;
+            Ok(DptValue::Dpt5001(format!("{:.1}%", pct)))
+        }
+        5002 => {
+            let angle = val.get("value").and_then(|v| v.as_f64())
+                .or_else(|| val.as_f64())
+                .ok_or(KnxError::InvalidParametersForDpt)?;
+            Ok(DptValue::Dpt5002(format!("{:.1}°", angle)))
+        }
+        6 => {
+            let i = val.get("value").and_then(|v| v.as_i64())
+                .or_else(|| val.as_i64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as i8;
+            Ok(DptValue::Dpt6(i))
+        }
+        6020 => {
+            let status = val.get("status").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)?;
+            let mode = val.get("mode").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)?;
+            Ok(DptValue::Dpt6020(Dpt6020Value {
+                status: status.to_string(),
+                mode: mode.to_string(),
+            }))
+        }
+        7 => {
+            let u = val.get("value").and_then(|v| v.as_u64())
+                .or_else(|| val.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u16;
+            Ok(DptValue::Dpt7(u))
+        }
+        8 => {
+            let i = val.get("value").and_then(|v| v.as_i64())
+                .or_else(|| val.as_i64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as i16;
+            Ok(DptValue::Dpt8(i))
+        }
+        9 => {
+            let f = val.get("value").and_then(|v| v.as_f64())
+                .or_else(|| val.as_f64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as f32;
+            Ok(DptValue::Dpt9(f))
+        }
+        10 => {
+            let day = val.get("day").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+            let hour = val.get("hour").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let minutes = val.get("minutes").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let seconds = val.get("seconds").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            Ok(DptValue::Dpt10(Dpt10Value {
+                day,
+                day_name: String::new(),
+                hour,
+                minutes,
+                seconds,
+            }))
+        }
+        11 => {
+            let day = val.get("day").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let month = val.get("month").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let year = val.get("year").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u16;
+            Ok(DptValue::Dpt11(Dpt11Value {
+                day,
+                month,
+                year,
+                formatted: String::new(),
+            }))
+        }
+        12 => {
+            let u = val.get("value").and_then(|v| v.as_u64())
+                .or_else(|| val.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u32;
+            Ok(DptValue::Dpt12(u))
+        }
+        13 => {
+            let i = val.get("value").and_then(|v| v.as_i64())
+                .or_else(|| val.as_i64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as i32;
+            Ok(DptValue::Dpt13(i))
+        }
+        14 => {
+            let f = val.get("value").and_then(|v| v.as_f64())
+                .or_else(|| val.as_f64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as f32;
+            Ok(DptValue::Dpt14(f))
         }
         16 => {
-            let s = val.as_str().ok_or(KnxError::InvalidParametersForDpt)?.to_string();
-            Ok(DptValue::Dpt16(s))
+            let text = val.get("text").and_then(|v| v.as_str())
+                .or_else(|| val.as_str())
+                .ok_or(KnxError::InvalidParametersForDpt)?.to_string();
+            Ok(DptValue::Dpt16(text))
+        }
+        20 => {
+            let u = val.get("value").and_then(|v| v.as_u64())
+                .or_else(|| val.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            Ok(DptValue::Dpt20(u))
+        }
+        232 => {
+            let r = val.get("R").or_else(|| val.get("r")).and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let g = val.get("G").or_else(|| val.get("g")).and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let b = val.get("B").or_else(|| val.get("b")).and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            Ok(DptValue::Dpt232(Dpt232Value { r, g, b }))
+        }
+        251 => {
+            let r_val = val.get("R").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let g_val = val.get("G").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let b_val = val.get("B").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let w_val = val.get("W").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            
+            let mr = val.get("mR").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
+            let mg = val.get("mG").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
+            let mb = val.get("mB").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
+            let mw = val.get("mW").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
+            
+            Ok(DptValue::Dpt251(Dpt251Value {
+                r: Dpt251Val { value: r_val, valid: mr },
+                g: Dpt251Val { value: g_val, valid: mg },
+                b: Dpt251Val { value: b_val, valid: mb },
+                w: Dpt251Val { value: w_val, valid: mw },
+            }))
         }
         _ => {
             if let Some(arr) = val.as_array() {
@@ -505,16 +652,33 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
                 }
                 Ok(DptValue::Raw(bytes))
             } else if let Some(s) = val.as_str() {
-                if dpt == "5.001" {
-                    Ok(DptValue::Dpt5001(s.to_string()))
-                } else if dpt == "5.002" {
-                    Ok(DptValue::Dpt5002(s.to_string()))
-                } else {
-                    Ok(DptValue::Dpt16(s.to_string()))
-                }
+                Ok(DptValue::Dpt16(s.to_string()))
             } else {
                 Err(KnxError::InvalidParametersForDpt)
             }
         }
+    }
+}
+
+pub fn dpt_value_to_json(val: &DptValue) -> Value {
+    match val {
+        DptValue::Dpt1(b) => serde_json::json!(b),
+        DptValue::Dpt2(v) => serde_json::json!({ "control": v.control, "value": v.value }),
+        DptValue::Dpt3(v) => serde_json::json!({ "control": v.control, "step_code": v.step_code }),
+        DptValue::Dpt4(c) => serde_json::json!(c.to_string()),
+        DptValue::Dpt5(u) => serde_json::json!(u),
+        DptValue::Dpt5001(s) => serde_json::json!(s),
+        DptValue::Dpt5002(s) => serde_json::json!(s),
+        DptValue::Dpt6(i) => serde_json::json!(i),
+        DptValue::Dpt7(u) => serde_json::json!(u),
+        DptValue::Dpt8(i) => serde_json::json!(i),
+        DptValue::Dpt9(f) => serde_json::json!(f),
+        DptValue::Dpt12(u) => serde_json::json!(u),
+        DptValue::Dpt13(i) => serde_json::json!(i),
+        DptValue::Dpt14(f) => serde_json::json!(f),
+        DptValue::Dpt16(s) => serde_json::json!(s),
+        DptValue::Dpt20(u) => serde_json::json!(u),
+        DptValue::Raw(bytes) => serde_json::json!(bytes),
+        other => serde_json::json!(format!("{:?}", other)),
     }
 }

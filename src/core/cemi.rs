@@ -735,6 +735,10 @@ impl Cemi {
         }
     }
 
+    pub fn describe_json(&self) -> serde_json::Value {
+        serde_json::to_value(&self.describe_struct()).unwrap_or(serde_json::Value::Null)
+    }
+
     pub fn describe_struct(&self) -> CemiDescription {
         match self {
             Cemi::LDataReq(data) | Cemi::LDataCon(data) | Cemi::LDataInd(data) => {
@@ -821,7 +825,7 @@ impl Cemi {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CemiDescription {
     pub obj: String,
     pub message_code: u8,
@@ -961,7 +965,7 @@ impl CemiDescription {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AdditionalInfoDescription {
     pub obj: &'static str,
     pub items: Vec<String>,

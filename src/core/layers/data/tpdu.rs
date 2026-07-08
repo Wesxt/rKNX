@@ -73,7 +73,7 @@ impl Tpdu {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TpduDescription {
     pub obj: &'static str,
     pub layer: &'static str,

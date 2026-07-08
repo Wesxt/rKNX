@@ -129,7 +129,7 @@ impl Apdu {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ApduDescription {
     pub obj: &'static str,
     pub layer: &'static str,

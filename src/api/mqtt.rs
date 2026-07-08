@@ -66,7 +66,11 @@ impl MqttAdapter {
 
                         // Publish plain decoded state value
                         if let Some(val) = event_val.get("value") {
-                            let val_str = val.as_str().unwrap_or("null").to_string();
+                            let val_str = if val.is_string() {
+                                val.as_str().unwrap_or("null").to_string()
+                            } else {
+                                val.to_string()
+                            };
                             let _ = client_sender.publish(&state_topic, QoS::AtLeastOnce, false, val_str).await;
                         }
                     }

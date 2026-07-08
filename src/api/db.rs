@@ -199,6 +199,9 @@ impl DbManager {
             let description: String = row.get(4)?;
             let value: Option<String> = row.get(5)?;
             
+            let desc_json: serde_json::Value = serde_json::from_str(&description).unwrap_or_else(|_| serde_json::json!(description));
+            let val_json: serde_json::Value = value.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or(serde_json::Value::Null);
+            
             let cemi_hex = hex_encode(cemi_raw);
 
             Ok(serde_json::json!({
@@ -206,8 +209,8 @@ impl DbManager {
                 "timestamp": timestamp,
                 "group_address": group_address,
                 "cemi_hex": cemi_hex,
-                "description": description,
-                "value": value
+                "description": desc_json,
+                "value": val_json
             }))
         })?;
 

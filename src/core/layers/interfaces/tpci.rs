@@ -169,7 +169,7 @@ impl Tpci {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TpciDescription {
     pub obj: &'static str,
     pub buffer: Vec<u8>,

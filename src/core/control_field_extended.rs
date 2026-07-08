@@ -119,7 +119,7 @@ impl ExtendedControlField {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ExtendedControlFieldDescription {
     pub obj: &'static str,
     pub hex: String,

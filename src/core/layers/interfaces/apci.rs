@@ -342,7 +342,7 @@ impl Apci {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ApciDescription {
     pub obj: &'static str,
     pub command: String,
