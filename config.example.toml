@@ -173,3 +173,25 @@ indications_raw = false
 
 # [Optional] Pretty print indications in a NodeJS-style format (default: false)
 node_format = false
+
+# =====================================================================
+# API Configuration (WebSocket Server & MQTT Adapter)
+# =====================================================================
+# Defining the [api] section tells the daemon to instantiate the internal
+# connection manager, SQLite database persistence, and API servers.
+[api]
+# [Optional] Path to the local SQLite database file (default: "rknx_cache.db")
+db_path = "rknx_cache.db"
+
+# [Optional] Port for the WebSocket API server listener (default: 8080)
+ws_port = 8080
+
+# [Optional] Host address of the external MQTT broker (e.g., "127.0.0.1")
+# Note: Omitting this or leaving it empty prevents the MQTT client from starting.
+mqtt_host = "127.0.0.1"
+
+# [Optional] Port of the MQTT broker (default: 1883)
+mqtt_port = 1883
+
+# [Optional] Client ID used to authenticate with the MQTT broker (default: "rknx_daemon")
+mqtt_client_id = "rknx_daemon"
