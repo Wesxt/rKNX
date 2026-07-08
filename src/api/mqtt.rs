@@ -59,7 +59,8 @@ impl MqttAdapter {
                     .await;
 
                 while let Ok(event_val) = manager_rx.recv().await {
-                    if let Some(addr) = event_val.get("group_address").and_then(|g| g.as_str()) {
+                    let addr_opt = event_val.get("groupAddress").or_else(|| event_val.get("group_address")).and_then(|g| g.as_str());
+                    if let Some(addr) = addr_opt {
                         let ind_topic = format!("rknx/event/indication/{}", addr);
                         let state_topic = format!("rknx/event/state/{}", addr);
 
@@ -74,7 +75,7 @@ impl MqttAdapter {
                         }
 
                         // Publish plain decoded state value
-                        if let Some(val) = event_val.get("value") {
+                        if let Some(val) = event_val.get("decodedValue").or_else(|| event_val.get("value")) {
                             let val_str = if val.is_string() {
                                 val.as_str().unwrap_or("null").to_string()
                             } else {
@@ -164,7 +165,7 @@ impl MqttAdapter {
                 if addr.is_empty() {
                     Err("Missing group_address".to_string())
                 } else {
-                    match manager.subscribe(addr) {
+                    match manager.subscribe(addr, None, None) {
                         Ok(_) => Ok(json!({ "subscribed": addr })),
                         Err(e) => Err(format!("Subscribe failed: {:?}", e)),
                     }

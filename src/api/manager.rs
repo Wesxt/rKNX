@@ -202,19 +202,15 @@ impl ApiManager {
             cache.set_enabled(true);
         }
 
-        // Restore DPT configurations
-        if let Ok(dpts) = self.db.get_dpt_configs() {
+        // Restore Subscriptions & DPT configs from SQLite
+        if let Ok(subs) = self.db.get_all_subscriptions() {
             let mut cache = GroupAddressCache::get_instance().write().unwrap();
-            for (addr, dpt) in dpts {
-                cache.set_address_dpt(addr, dpt);
-            }
-        }
-
-        // Restore Subscriptions
-        if let Ok(subs) = self.db.get_subscriptions() {
             let mut guard = self.subscriptions.write().unwrap();
             for sub in subs {
-                guard.insert(sub);
+                if let Some(ref dpt) = sub.dpt {
+                    cache.set_address_dpt(sub.address.clone(), dpt.clone());
+                }
+                guard.insert(sub.address);
             }
         }
 
@@ -255,18 +251,20 @@ impl ApiManager {
                         let val_json = entry.decoded_value.as_ref().map(|v| dpt_value_to_json(v)).unwrap_or(serde_json::Value::Null);
                         let val_db_str = if val_json.is_null() { None } else { Some(val_json.to_string()) };
 
-                        // 1. Non-blocking SQLite DB save
+                        // 1. Non-blocking SQLite DB save (history and last value)
                         let db_cloned = db.clone();
                         let addr_cloned = addr.clone();
                         let desc_cloned = desc_db_str.clone();
+                        let val_db_str_cloned = val_db_str.clone();
                         tokio::task::spawn_blocking(move || {
                             let _ = db_cloned.save_indication(
                                 timestamp,
                                 &addr_cloned,
                                 &cemi_raw,
                                 &desc_cloned,
-                                val_db_str.as_deref(),
+                                val_db_str_cloned.as_deref(),
                             );
+                            let _ = db_cloned.update_last_value(&addr_cloned, val_db_str_cloned.as_deref());
                         });
 
                         // 2. Event broadcasting if subscribed
@@ -276,12 +274,18 @@ impl ApiManager {
                         };
 
                         if is_subscribed {
+                            let apci_cmd = desc_json.get("tpdu")
+                                .and_then(|t| t.get("apdu"))
+                                .and_then(|a| a.get("command"))
+                                .and_then(|c| c.as_str())
+                                .unwrap_or("AGroupValueWrite");
                             let event_payload = serde_json::json!({
-                                "event": "indication",
-                                "group_address": addr,
-                                "timestamp": timestamp,
-                                "description": desc_json,
-                                "value": val_json,
+                                "action": "event",
+                                "groupAddress": addr,
+                                "cemi": desc_json,
+                                "decodedValue": val_json,
+                                "sourceLinkKey": desc_json.get("source_address").and_then(|s| s.as_str()).unwrap_or(""),
+                                "apci": apci_cmd
                             });
                             let _ = broadcaster.send(event_payload);
                         }
@@ -407,6 +411,15 @@ impl ApiManager {
         let opts_json = opts.to_string();
         let _ = self.db.save_connection_config(conn_type, &opts_json, true);
 
+        // Broadcast status update
+        let status_payload = serde_json::json!({
+            "action": "knx_connection_status",
+            "connected": true,
+            "type": conn_type,
+            "options": opts
+        });
+        let _ = self.event_broadcaster.send(status_payload);
+
         Ok(())
     }
 
@@ -425,6 +438,16 @@ impl ApiManager {
                     .save_connection_config(&conn_type, &opts_json, false);
             }
         }
+
+        // Broadcast status update
+        let status_payload = serde_json::json!({
+            "action": "knx_connection_status",
+            "connected": false,
+            "type": "none",
+            "options": serde_json::Value::Null
+        });
+        let _ = self.event_broadcaster.send(status_payload);
+
         Ok(())
     }
 
@@ -433,7 +456,7 @@ impl ApiManager {
         guard.as_ref().map(|c| c.is_connected()).unwrap_or(false)
     }
 
-    pub fn get_connection_info(&self) -> Option<(String, String)> {
+    pub fn get_connection_info(&self) -> Option<(String, String, Value)> {
         let guard = self.active_connection.read().unwrap();
         guard.as_ref().map(|c| {
             let conn_type = match c {
@@ -443,21 +466,26 @@ impl ApiManager {
                 ActiveConnection::Tunneling(_) => "Tunneling",
                 ActiveConnection::Usb(_) => "Usb",
             };
-            (conn_type.to_string(), c.individual_address())
+            let options = if let Ok(Some((_, opts_json, _))) = self.db.get_connection_config() {
+                serde_json::from_str(&opts_json).unwrap_or(serde_json::Value::Null)
+            } else {
+                serde_json::Value::Null
+            };
+            (conn_type.to_string(), c.individual_address(), options)
         })
     }
 
-    pub fn subscribe(&self, group_address: &str) -> Result<(), KnxError> {
+    pub fn subscribe(&self, group_address: &str, name: Option<&str>, description: Option<&str>) -> Result<(), KnxError> {
         let mut guard = self.subscriptions.write().unwrap();
         guard.insert(group_address.to_string());
-        let _ = self.db.add_subscription(group_address);
+        let _ = self.db.save_subscription(group_address, None, name, description);
         Ok(())
     }
 
     pub fn unsubscribe(&self, group_address: &str) -> Result<(), KnxError> {
         let mut guard = self.subscriptions.write().unwrap();
         guard.remove(group_address);
-        let _ = self.db.remove_subscription(group_address);
+        let _ = self.db.delete_subscription(group_address);
         Ok(())
     }
 
@@ -467,26 +495,16 @@ impl ApiManager {
     }
 
     pub fn get_subscriptions_list(&self) -> Result<Value, KnxError> {
-        let subs = self.db.get_subscriptions().map_err(|_| KnxError::InvalidParametersForDpt)?;
-        let dpt_configs = self.db.get_dpt_configs().map_err(|_| KnxError::InvalidParametersForDpt)?;
-        
-        let mut list = Vec::new();
-        for sub in subs {
-            let dpt = dpt_configs.iter().find(|(addr, _)| addr == &sub).map(|(_, d)| d.as_str());
-            list.push(serde_json::json!({
-                "address": sub,
-                "dpt": dpt
-            }));
-        }
+        let subs = self.db.get_all_subscriptions().map_err(|_| KnxError::InvalidParametersForDpt)?;
         Ok(serde_json::json!({
-            "subscriptions": list
+            "subscriptions": subs
         }))
     }
 
     pub fn set_dpt(&self, group_address: &str, dpt: &str) -> Result<(), KnxError> {
         let mut cache = GroupAddressCache::get_instance().write().unwrap();
         cache.set_address_dpt(group_address.to_string(), dpt.to_string());
-        let _ = self.db.save_dpt_config(group_address, dpt);
+        let _ = self.db.save_subscription(group_address, Some(dpt), None, None);
         Ok(())
     }
 

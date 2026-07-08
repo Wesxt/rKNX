@@ -61,6 +61,28 @@ impl WebSocketServer {
                         let (event_sender_tx, mut event_sender_rx) =
                             tokio::sync::mpsc::channel::<Message>(100);
 
+                        // 1. Send "connected"
+                        let connected_payload = serde_json::json!({
+                            "action": "connected",
+                            "message": "KNX WebSocket Gateway connected (powered by rKNX in Rust)"
+                        });
+                        let _ = event_sender_tx.send(Message::Text(connected_payload.to_string())).await;
+
+                        // 2. Send "knx_connection_status"
+                        let conn_info = manager_cloned.get_connection_info();
+                        let status_payload = serde_json::json!({
+                            "action": "knx_connection_status",
+                            "connected": conn_info.is_some(),
+                            "type": conn_info.as_ref().map(|c| &c.0).unwrap_or(&"none".to_string()),
+                            "options": conn_info.as_ref().map(|c| &c.2).unwrap_or(&serde_json::Value::Null)
+                        });
+                        let _ = event_sender_tx.send(Message::Text(status_payload.to_string())).await;
+
+                        // 3. Send "subscriptions_list"
+                        if let Ok(subs_list) = manager_cloned.get_subscriptions_list() {
+                            let _ = event_sender_tx.send(Message::Text(subs_list.to_string())).await;
+                        }
+
                         // Spawn a task to send messages to the ws client
                         let logger_sender = logger_cloned.clone();
                         tokio::spawn(async move {
@@ -111,8 +133,8 @@ impl WebSocketServer {
             Ok(v) => v,
             Err(e) => {
                 return json!({
-                    "success": false,
-                    "error": format!("Invalid JSON request: {}", e)
+                    "action": "error",
+                    "message": format!("Invalid JSON request: {}", e)
                 });
             }
         };
@@ -122,97 +144,91 @@ impl WebSocketServer {
             Some(a) => a,
             None => {
                 return json!({
-                    "id": msg_id,
-                    "success": false,
-                    "error": "Missing action field"
+                    "action": "error",
+                    "message": "Missing action field"
                 });
             }
         };
 
         let result = match action {
-            "connect" => {
-                let conn_type = req
-                    .get("connection_type")
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("");
-                let options = req.get("options").cloned().unwrap_or(json!({}));
-                match manager.connect(conn_type, options).await {
-                    Ok(_) => Ok(json!({ "connected": true })),
-                    Err(e) => Err(format!("Connection failed: {:?}", e)),
+            "connect_knx" => {
+                let conn_type_raw = req.get("connectionType").and_then(|c| c.as_str()).unwrap_or("");
+                let conn_type = match conn_type_raw.to_lowercase().as_str() {
+                    "tunneling" => "Tunneling".to_string(),
+                    "router" => "Router".to_string(),
+                    "knxnetipserver" => "Server".to_string(),
+                    "tpuart" => "Tpuart".to_string(),
+                    "usb" => "Usb".to_string(),
+                    other => other.to_string(),
+                };
+                
+                let raw_opts = req.get("connectionOptions").cloned().unwrap_or(json!({}));
+                let mut mapped_opts = json!({});
+                if let Some(obj) = raw_opts.as_object() {
+                    let mut map = serde_json::Map::new();
+                    for (k, v) in obj {
+                        let snake_key = match k.as_str() {
+                            "localIp" => "local_ip",
+                            "localPort" => "local_port",
+                            "useRouteBack" => "use_route_back",
+                            "maxQueueSize" => "max_queue_size",
+                            "individualAddress" => "individual_address",
+                            "friendlyName" => "friendly_name",
+                            "macAddress" => "mac_address",
+                            "clientAddrs" => "client_addrs",
+                            "routingDelay" => "routing_delay",
+                            "ackGroup" => "ack_group",
+                            "ackIndividual" => "ack_individual",
+                            "vendorId" => "vendor_id",
+                            "productId" => "product_id",
+                            other => other,
+                        };
+                        map.insert(snake_key.to_string(), v.clone());
+                    }
+                    mapped_opts = Value::Object(map);
+                }
+
+                match manager.connect(&conn_type, mapped_opts).await {
+                    Ok(_) => Ok(json!({ "action": "connect_knx_ack", "success": true })),
+                    Err(e) => Ok(json!({ "action": "connect_knx_ack", "success": false, "error": format!("{:?}", e) })),
                 }
             }
-            "disconnect" => match manager.disconnect().await {
-                Ok(_) => Ok(json!({ "disconnected": true })),
-                Err(e) => Err(format!("Disconnection failed: {:?}", e)),
+            "disconnect_knx" => match manager.disconnect().await {
+                Ok(_) => Ok(json!({ "action": "disconnect_knx_ack", "success": true })),
+                Err(e) => Ok(json!({ "action": "disconnect_knx_ack", "success": false, "error": format!("{:?}", e) })),
             },
-            "subscribe" => {
-                let addr = req
-                    .get("group_address")
-                    .and_then(|g| g.as_str())
-                    .unwrap_or("");
-                if addr.is_empty() {
-                    Err("Missing group_address".to_string())
-                } else {
-                    match manager.subscribe(addr) {
-                        Ok(_) => Ok(json!({ "subscribed": addr })),
-                        Err(e) => Err(format!("Subscribe failed: {:?}", e)),
-                    }
-                }
-            }
-            "subscriptions" => {
-                match manager.get_subscriptions_list() {
-                    Ok(list) => Ok(list),
-                    Err(e) => Err(format!("Get subscriptions failed: {:?}", e)),
-                }
-            }
-            "unsubscribe" => {
-                let addr = req
-                    .get("group_address")
-                    .and_then(|g| g.as_str())
-                    .unwrap_or("");
-                if addr.is_empty() {
-                    Err("Missing group_address".to_string())
-                } else {
-                    match manager.unsubscribe(addr) {
-                        Ok(_) => Ok(json!({ "unsubscribed": addr })),
-                        Err(e) => Err(format!("Unsubscribe failed: {:?}", e)),
-                    }
-                }
-            }
-            "set_dpt" => {
-                let addr = req
-                    .get("group_address")
-                    .and_then(|g| g.as_str())
-                    .unwrap_or("");
+            "config_dpt" => {
+                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
                 let dpt = req.get("dpt").and_then(|d| d.as_str()).unwrap_or("");
                 if addr.is_empty() || dpt.is_empty() {
-                    Err("Missing group_address or dpt".to_string())
+                    Err("Missing groupAddress or dpt".to_string())
                 } else {
                     match manager.set_dpt(addr, dpt) {
-                        Ok(_) => Ok(json!({ "configured": addr, "dpt": dpt })),
+                        Ok(_) => Ok(json!({ "action": "config_dpt_ack", "groupAddress": addr, "dpt": dpt })),
                         Err(e) => Err(format!("Set DPT failed: {:?}", e)),
                     }
                 }
             }
-            "write" => {
-                if !manager.is_connected() {
-                    Err("Connection required before sending commands".to_string())
+            "subscribe" => {
+                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                let name = req.get("name").and_then(|n| n.as_str());
+                if addr.is_empty() {
+                    Err("Missing groupAddress".to_string())
                 } else {
-                    let addr = req
-                        .get("group_address")
-                        .and_then(|g| g.as_str())
-                        .unwrap_or("");
-                    let value = req.get("value").cloned().unwrap_or(Value::Null);
-                    if addr.is_empty() || value.is_null() {
-                        Err("Missing group_address or value".to_string())
-                    } else {
-                        if let Some(dpt) = req.get("dpt").and_then(|d| d.as_str()) {
-                            let _ = manager.set_dpt(addr, dpt);
-                        }
-                        match manager.write(addr, value).await {
-                            Ok(_) => Ok(json!({ "written": true })),
-                            Err(e) => Err(format!("Write command failed: {:?}", e)),
-                        }
+                    match manager.subscribe(addr, name, None) {
+                        Ok(_) => Ok(json!({ "action": "subscribe_ack", "groupAddress": addr })),
+                        Err(e) => Err(format!("Subscribe failed: {:?}", e)),
+                    }
+                }
+            }
+            "unsubscribe" => {
+                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                if addr.is_empty() {
+                    Err("Missing groupAddress".to_string())
+                } else {
+                    match manager.unsubscribe(addr) {
+                        Ok(_) => Ok(json!({ "action": "unsubscribe_ack", "groupAddress": addr })),
+                        Err(e) => Err(format!("Unsubscribe failed: {:?}", e)),
                     }
                 }
             }
@@ -220,61 +236,121 @@ impl WebSocketServer {
                 if !manager.is_connected() {
                     Err("Connection required before sending commands".to_string())
                 } else {
-                    let addr = req
-                        .get("group_address")
-                        .and_then(|g| g.as_str())
-                        .unwrap_or("");
+                    let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
                     if addr.is_empty() {
-                        Err("Missing group_address".to_string())
+                        Err("Missing groupAddress".to_string())
                     } else {
                         match manager.read(addr).await {
-                            Ok(_) => Ok(json!({ "read_sent": true })),
+                            Ok(_) => Ok(json!({ "action": "read_result", "groupAddress": addr })),
                             Err(e) => Err(format!("Read command failed: {:?}", e)),
                         }
                     }
                 }
             }
-            "get_history" => {
-                let limit = req.get("limit").and_then(|l| l.as_u64()).unwrap_or(50) as usize;
-                match manager.get_history(limit) {
-                    Ok(h) => Ok(json!(h)),
-                    Err(e) => Err(format!("Failed to retrieve history: {}", e)),
+            "write" => {
+                if !manager.is_connected() {
+                    Err("Connection required before sending commands".to_string())
+                } else {
+                    let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                    let value = req.get("value").cloned().unwrap_or(Value::Null);
+                    let dpt_opt = req.get("dpt").and_then(|d| d.as_str());
+                    if addr.is_empty() || value.is_null() {
+                        Err("Missing groupAddress or value".to_string())
+                    } else {
+                        if let Some(dpt) = dpt_opt {
+                            let _ = manager.set_dpt(addr, dpt);
+                        }
+                        match manager.write(addr, value).await {
+                            Ok(_) => Ok(json!({ "action": "write_ack", "groupAddress": addr })),
+                            Err(e) => Err(format!("Write command failed: {:?}", e)),
+                        }
+                    }
                 }
             }
-            "set_retention" => {
-                let seconds = req
-                    .get("seconds")
-                    .and_then(|s| s.as_i64())
-                    .unwrap_or(604800);
-                match manager.set_retention(seconds) {
-                    Ok(_) => Ok(json!({ "retention_configured": seconds })),
-                    Err(e) => Err(format!("Failed to configure retention: {}", e)),
+            "query" => {
+                let addr = req.get("groupAddress").and_then(|g| g.as_str()).unwrap_or("");
+                if addr.is_empty() {
+                    Err("Missing groupAddress".to_string())
+                } else {
+                    match manager.get_history(100) {
+                        Ok(hist) => {
+                            let results = hist.iter().map(|item| {
+                                let ga = item.get("group_address").and_then(|v| v.as_str()).unwrap_or("");
+                                let val = item.get("value").cloned().unwrap_or(Value::Null);
+                                let cemi_desc = item.get("description").cloned().unwrap_or(Value::Null);
+                                let apci_cmd = cemi_desc.get("tpdu").and_then(|t| t.get("apdu")).and_then(|a| a.get("command")).and_then(|c| c.as_str()).unwrap_or("AGroupValueWrite");
+                                
+                                let formatted_time = chrono::Local::now().naive_local().format("%H:%M:%S").to_string();
+                                
+                                json!({
+                                    "groupAddress": ga,
+                                    "decodedValue": val,
+                                    "apci": apci_cmd,
+                                    "cemi": cemi_desc,
+                                    "timestamp": formatted_time
+                                })
+                            }).collect::<Vec<Value>>();
+                            Ok(json!({
+                                "action": "query_result",
+                                "groupAddress": addr,
+                                "results": results
+                            }))
+                        }
+                        Err(e) => Err(format!("Query failed: {}", e)),
+                    }
                 }
+            }
+            "import_group_addresses" => {
+                let group_addrs = req.get("groupAddresses").and_then(|a| a.as_array());
+                if let Some(addrs) = group_addrs {
+                    for item in addrs {
+                        let address = item.get("address").and_then(|a| a.as_str()).unwrap_or("");
+                        if !address.is_empty() {
+                            let dpt = item.get("dpt").and_then(|d| d.as_str());
+                            let name = item.get("name").and_then(|n| n.as_str());
+                            let desc = item.get("description").and_then(|d| d.as_str());
+                            
+                            if let Some(dpt_str) = dpt {
+                                let _ = manager.set_dpt(address, dpt_str);
+                            }
+                            let _ = manager.subscribe(address, name, desc);
+                        }
+                    }
+                }
+                match manager.get_subscriptions_list() {
+                    Ok(list) => Ok(list),
+                    Err(e) => Err(format!("Import failed: {:?}", e)),
+                }
+            }
+            "discover" => {
+                Ok(json!({ "action": "discover_result", "devices": [] }))
             }
             "status" => {
-                let conn_state = manager.get_connection_info();
+                let conn_info = manager.get_connection_info();
                 Ok(json!({
-                    "connected": manager.is_connected(),
-                    "connection_type": conn_state.as_ref().map(|c| &c.0),
-                    "individual_address": conn_state.as_ref().map(|c| &c.1),
-                    "subscriptions": manager.get_subscriptions(),
-                    "retention_seconds": manager.get_retention().unwrap_or(604800)
+                    "action": "knx_connection_status",
+                    "connected": conn_info.is_some(),
+                    "type": conn_info.as_ref().map(|c| &c.0).unwrap_or(&"none".to_string()),
+                    "options": conn_info.as_ref().map(|c| &c.2).unwrap_or(&serde_json::Value::Null)
                 }))
             }
             _ => Err(format!("Unknown action: {}", action)),
         };
 
-        match result {
-            Ok(res) => json!({
-                "id": msg_id,
-                "success": true,
-                "response": res
+        let mut response_body = match result {
+            Ok(val) => val,
+            Err(err_msg) => json!({
+                "action": "error",
+                "message": err_msg
             }),
-            Err(e) => json!({
-                "id": msg_id,
-                "success": false,
-                "error": e
-            }),
+        };
+
+        if let Some(id) = msg_id {
+            if let Some(obj) = response_body.as_object_mut() {
+                obj.insert("id".to_string(), id);
+            }
         }
+
+        response_body
     }
 }
