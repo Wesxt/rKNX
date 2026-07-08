@@ -387,11 +387,17 @@ impl KnxNetIpServer {
     }
 
     /// Resolve HPAI from RemoteInfo and local configs.
-    fn get_hpai(&self, _rinfo: Option<SocketAddr>) -> Hpai {
+    fn get_hpai(&self, rinfo: Option<SocketAddr>) -> Hpai {
         let mut local_ip =
             Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
         if local_ip.is_unspecified() {
-            if let Some(ip) = get_local_ip() {
+            if let Some(dest) = rinfo {
+                if let Some(ip) = get_local_ip_routing_to(dest.ip()) {
+                    local_ip = ip;
+                } else if let Some(ip) = get_local_ip() {
+                    local_ip = ip;
+                }
+            } else if let Some(ip) = get_local_ip() {
                 local_ip = ip;
             }
         }
@@ -747,7 +753,7 @@ impl KnxNetIpServer {
                 let _ = socket.send_to(&packet[..], &dest).await;
             }
 
-            KnxNetIpServiceType::ConnectionstateRequest => {
+            KnxNetIpServiceType::ConnectionStateRequest => {
                 let channel_id = body[0];
                 let mut client_control_hpai = Hpai::from_buffer(&body[2..])?;
                 if !Self::resolve_route_back(&mut client_control_hpai, rinfo) {
@@ -765,7 +771,7 @@ impl KnxNetIpServer {
 
                 let res_body = vec![channel_id, status];
                 let res_header = KnxNetIpHeader::new(
-                    KnxNetIpServiceType::ConnectionstateResponse,
+                    KnxNetIpServiceType::ConnectionStateResponse,
                     (KnxNetIpHeader::HEADER_SIZE_10 as u16) + (res_body.len() as u16),
                 );
                 let mut packet = res_header.to_buffer();
@@ -1715,7 +1721,9 @@ async fn handle_message_static(
             let mut s_ip =
                 Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
             if s_ip.is_unspecified() {
-                if let Some(ip) = get_local_ip() {
+                if let Some(ip) = get_local_ip_routing_to(rinfo.ip()) {
+                    s_ip = ip;
+                } else if let Some(ip) = get_local_ip() {
                     s_ip = ip;
                 }
             }
@@ -1758,7 +1766,9 @@ async fn handle_message_static(
             let mut s_ip =
                 Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
             if s_ip.is_unspecified() {
-                if let Some(ip) = get_local_ip() {
+                if let Some(ip) = get_local_ip_routing_to(rinfo.ip()) {
+                    s_ip = ip;
+                } else if let Some(ip) = get_local_ip() {
                     s_ip = ip;
                 }
             }
@@ -1808,7 +1818,9 @@ async fn handle_message_static(
             let mut s_ip =
                 Ipv4Addr::from_str(&ctx.options.local_ip).unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
             if s_ip.is_unspecified() {
-                if let Some(ip) = get_local_ip() {
+                if let Some(ip) = get_local_ip_routing_to(rinfo.ip()) {
+                    s_ip = ip;
+                } else if let Some(ip) = get_local_ip() {
                     s_ip = ip;
                 }
             }
@@ -1944,7 +1956,7 @@ async fn handle_message_static(
             }
         }
 
-        KnxNetIpServiceType::ConnectionstateRequest => {
+        KnxNetIpServiceType::ConnectionStateRequest => {
             let channel_id = body[0];
             let mut client_control_hpai = Hpai::from_buffer(&body[2..])?;
             if !KnxNetIpServer::resolve_route_back(&mut client_control_hpai, rinfo) {
@@ -1962,7 +1974,7 @@ async fn handle_message_static(
 
             let res_body = vec![channel_id, status];
             let res_header = KnxNetIpHeader::new(
-                KnxNetIpServiceType::ConnectionstateResponse,
+                KnxNetIpServiceType::ConnectionStateResponse,
                 (KnxNetIpHeader::HEADER_SIZE_10 as u16) + (res_body.len() as u16),
             );
             let mut packet = res_header.to_buffer();
@@ -2065,7 +2077,9 @@ async fn handle_message_static(
                 let mut s_ip = Ipv4Addr::from_str(&ctx.options.local_ip)
                     .unwrap_or(Ipv4Addr::new(127, 0, 0, 1));
                 if s_ip.is_unspecified() {
-                    if let Some(ip) = get_local_ip() {
+                    if let Some(ip) = get_local_ip_routing_to(rinfo.ip()) {
+                        s_ip = ip;
+                    } else if let Some(ip) = get_local_ip() {
                         s_ip = ip;
                     }
                 }
@@ -2619,6 +2633,15 @@ fn get_identification_dibs_static(
 fn get_local_ip() -> Option<Ipv4Addr> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
+    match socket.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(v4) => Some(v4),
+        _ => None,
+    }
+}
+
+fn get_local_ip_routing_to(dest: std::net::IpAddr) -> Option<Ipv4Addr> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect(SocketAddr::new(dest, 1)).ok()?;
     match socket.local_addr().ok()?.ip() {
         std::net::IpAddr::V4(v4) => Some(v4),
         _ => None,

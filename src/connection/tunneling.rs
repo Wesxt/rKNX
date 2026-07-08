@@ -641,7 +641,7 @@ impl KnxService for KnxTunneling {
                                                 }
                                             }
                                         }
-                                        KnxNetIpServiceType::ConnectionstateResponse => {
+                                        KnxNetIpServiceType::ConnectionStateResponse => {
                                             if body.len() >= 2 && body[0] == channel_id {
                                                 if body[1] == KnxNetIpErrorCodes::ENoError as u8 {
                                                     heartbeat_pending = false;
@@ -651,9 +651,9 @@ impl KnxService for KnxTunneling {
                                                 }
                                             }
                                         }
-                                        KnxNetIpServiceType::ConnectionstateRequest => {
+                                        KnxNetIpServiceType::ConnectionStateRequest => {
                                             if body.len() >= 2 && body[0] == channel_id {
-                                                let resp_header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectionstateResponse, 8);
+                                                let resp_header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectionStateResponse, 8);
                                                 let mut resp = resp_header.to_buffer();
                                                 resp.extend_from_slice(&[channel_id, KnxNetIpErrorCodes::ENoError as u8]);
                                                 let _ = send_raw!(&resp);
@@ -672,7 +672,7 @@ impl KnxService for KnxTunneling {
 
                                         let mut body = vec![channel_id, 0x00];
                                         body.extend_from_slice(&hpai.to_buffer());
-                                        let header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectionstateRequest, (6 + body.len()) as u16);
+                                        let header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectionStateRequest, (6 + body.len()) as u16);
                                         let mut packet = header.to_buffer();
                                         packet.extend_from_slice(&body);
 
@@ -714,7 +714,7 @@ impl KnxService for KnxTunneling {
                                         last_heartbeat_sent = Instant::now();
                                         let mut body = vec![channel_id, 0x00];
                                         body.extend_from_slice(&hpai.to_buffer());
-                                        let header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectionstateRequest, (6 + body.len()) as u16);
+                                        let header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectionStateRequest, (6 + body.len()) as u16);
                                         let mut packet = header.to_buffer();
                                         packet.extend_from_slice(&body);
                                         let _ = send_raw!(&packet);
