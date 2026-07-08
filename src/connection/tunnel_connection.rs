@@ -62,13 +62,13 @@ pub struct TunnelConnection {
 
     queue: VecDeque<QueueItem>,
     is_sending: bool,
-    pub pending_ack: Option<PendingAck>,
+    pending_ack: Option<PendingAck>,
 
     heartbeat_deadline: Instant,
     heartbeat_timeout: Duration,
     retransmit_timeout: Duration,
     max_queue_size: usize,
-    ignore_acktimeout: bool,
+    _ignore_acktimeout: bool,
 }
 
 impl TunnelConnection {
@@ -103,7 +103,7 @@ impl TunnelConnection {
             heartbeat_timeout: Duration::from_millis(heartbeat_timeout_ms),
             retransmit_timeout: Duration::from_millis(retransmit_timeout_ms),
             max_queue_size,
-            ignore_acktimeout,
+            _ignore_acktimeout: ignore_acktimeout,
         }
     }
 
