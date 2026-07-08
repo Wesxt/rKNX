@@ -167,11 +167,25 @@ impl WebSocketServer {
                 if let Some(obj) = raw_opts.as_object() {
                     let mut map = serde_json::Map::new();
                     for (k, v) in obj {
+                        // Strip fields that aren't understood by the Rust config deserializer
+                        if k == "logOptions" {
+                            continue;
+                        }
                         let snake_key = match k.as_str() {
+                            // gateway_host / gateway_port aliases
+                            "ip" => "gateway_host",
+                            "host" => "gateway_host",
+                            "gatewayHost" => "gateway_host",
+                            "port" => "gateway_port",
+                            "gatewayPort" => "gateway_port",
+                            // standard camelCase -> snake_case
                             "localIp" => "local_ip",
                             "localPort" => "local_port",
                             "useRouteBack" => "use_route_back",
                             "maxQueueSize" => "max_queue_size",
+                            "autoReconnect" => "auto_reconnect",
+                            "maxReconnectAttempts" => "max_reconnect_attempts",
+                            "reconnectDelayMs" => "reconnect_delay_ms",
                             "individualAddress" => "individual_address",
                             "friendlyName" => "friendly_name",
                             "macAddress" => "mac_address",
@@ -183,6 +197,17 @@ impl WebSocketServer {
                             "productId" => "product_id",
                             other => other,
                         };
+
+                        // Map numeric connectionType to string for ClientConfig
+                        if snake_key == "connectionType" || k == "connectionType" {
+                            let ct_str = match v.as_u64() {
+                                Some(3) => Value::String("DeviceMgmtConnection".to_string()),
+                                Some(4) | _ => Value::String("TunnelConnection".to_string()),
+                            };
+                            map.insert("connection_type".to_string(), ct_str);
+                            continue;
+                        }
+
                         map.insert(snake_key.to_string(), v.clone());
                     }
                     mapped_opts = Value::Object(map);

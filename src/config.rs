@@ -20,7 +20,7 @@ pub struct ServerConfig {
     pub ignore_acktimeout: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ClientConfig {
     pub gateway_host: Option<String>, // maps to ip
     pub gateway_port: Option<u16>,    // maps to port

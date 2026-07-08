@@ -142,6 +142,10 @@ impl KnxNetIpServer {
             }
         }
 
+        if options.individual_address.is_empty() {
+            options.individual_address = "15.15.0".to_string();
+        }
+
         // Serial number default
         if options.serial_number.is_none() {
             if let Ok(mac) = parse_mac(&options.mac_address) {
@@ -156,7 +160,7 @@ impl KnxNetIpServer {
         }
 
         if options.friendly_name.is_empty() {
-            options.friendly_name = "KNX.ts".to_string();
+            options.friendly_name = "rKNX".to_string();
         }
 
         let server_ia_int = KnxHelper::get_address_from_string(&options.individual_address)
@@ -1417,7 +1421,7 @@ impl KnxService for KnxNetIpServer {
 
         let mcast_ip = Ipv4Addr::from_str(&self.options.ip)
             .map_err(|e| KnxError::Protocol(format!("Invalid multicast IP: {}", e)))?;
-        
+
         let mut joined_interfaces = std::collections::HashSet::new();
         let primary_local_ip =
             Ipv4Addr::from_str(&self.options.local_ip).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
@@ -1426,10 +1430,16 @@ impl KnxService for KnxNetIpServer {
             match socket.join_multicast_v4(mcast_ip, primary_local_ip) {
                 Ok(_) => {
                     joined_interfaces.insert(primary_local_ip);
-                    self.logger.info(&format!("Joined multicast on primary interface ({})", primary_local_ip));
+                    self.logger.info(&format!(
+                        "Joined multicast on primary interface ({})",
+                        primary_local_ip
+                    ));
                 }
                 Err(e) => {
-                    self.logger.warn(&format!("Failed to join multicast on primary interface {}: {:?}", primary_local_ip, e));
+                    self.logger.warn(&format!(
+                        "Failed to join multicast on primary interface {}: {:?}",
+                        primary_local_ip, e
+                    ));
                 }
             }
         }
@@ -1443,7 +1453,10 @@ impl KnxService for KnxNetIpServer {
                             match socket.join_multicast_v4(mcast_ip, ipv4_addr) {
                                 Ok(_) => {
                                     joined_interfaces.insert(ipv4_addr);
-                                    self.logger.info(&format!("Joined multicast on interface {} ({})", iface.name, ipv4_addr));
+                                    self.logger.info(&format!(
+                                        "Joined multicast on interface {} ({})",
+                                        iface.name, ipv4_addr
+                                    ));
                                 }
                                 Err(_) => {
                                     // Ignore virtual/non-multicast interfaces
@@ -1466,11 +1479,13 @@ impl KnxService for KnxNetIpServer {
                         let old = *s;
                         *s = KnxServerState::Faulted;
                         self.logger.info(
-                            &format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase(),
+                            &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                .to_uppercase(),
                         );
                     }
                     return Err(KnxError::Protocol(format!(
-                        "Failed to join multicast group on any interface: {:?}", e
+                        "Failed to join multicast group on any interface: {:?}",
+                        e
                     )));
                 }
             }
