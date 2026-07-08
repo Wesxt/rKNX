@@ -100,15 +100,21 @@ pub struct KnxDataDecode;
 
 impl KnxDataDecode {
     pub fn get_dpt_number(dpt: &str) -> Option<u32> {
-        if dpt.contains('.') {
-            let parts: Vec<&str> = dpt.split('.').collect();
+        let cleaned_upper = dpt.trim().to_uppercase();
+        let cleaned = if cleaned_upper.starts_with("DPT") {
+            cleaned_upper.split_at(3).1.to_string()
+        } else {
+            cleaned_upper
+        };
+        if cleaned.contains('.') {
+            let parts: Vec<&str> = cleaned.split('.').collect();
             if parts.len() == 2 {
                 if let (Ok(p1), Ok(p2)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
                     return Some(p1 * 1000 + p2);
                 }
             }
         }
-        dpt.parse::<u32>().ok()
+        cleaned.parse::<u32>().ok()
     }
 
     pub fn fallback_dpt(dpt_num: u32) -> u32 {

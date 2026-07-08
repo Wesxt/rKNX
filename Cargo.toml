@@ -1,6 +1,6 @@
 [package]
 name = "rKNX"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2024"
 description = "KNX IP Protocol implementation for embedded systems with Rust"
 repository = "https://github.com/Wesxt/rKNX"
