@@ -466,6 +466,23 @@ impl ApiManager {
         guard.iter().cloned().collect()
     }
 
+    pub fn get_subscriptions_list(&self) -> Result<Value, KnxError> {
+        let subs = self.db.get_subscriptions().map_err(|_| KnxError::InvalidParametersForDpt)?;
+        let dpt_configs = self.db.get_dpt_configs().map_err(|_| KnxError::InvalidParametersForDpt)?;
+        
+        let mut list = Vec::new();
+        for sub in subs {
+            let dpt = dpt_configs.iter().find(|(addr, _)| addr == &sub).map(|(_, d)| d.as_str());
+            list.push(serde_json::json!({
+                "address": sub,
+                "dpt": dpt
+            }));
+        }
+        Ok(serde_json::json!({
+            "subscriptions": list
+        }))
+    }
+
     pub fn set_dpt(&self, group_address: &str, dpt: &str) -> Result<(), KnxError> {
         let mut cache = GroupAddressCache::get_instance().write().unwrap();
         cache.set_address_dpt(group_address.to_string(), dpt.to_string());

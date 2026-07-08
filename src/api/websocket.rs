@@ -159,6 +159,12 @@ impl WebSocketServer {
                     }
                 }
             }
+            "subscriptions" => {
+                match manager.get_subscriptions_list() {
+                    Ok(list) => Ok(list),
+                    Err(e) => Err(format!("Get subscriptions failed: {:?}", e)),
+                }
+            }
             "unsubscribe" => {
                 let addr = req
                     .get("group_address")
@@ -200,6 +206,9 @@ impl WebSocketServer {
                     if addr.is_empty() || value.is_null() {
                         Err("Missing group_address or value".to_string())
                     } else {
+                        if let Some(dpt) = req.get("dpt").and_then(|d| d.as_str()) {
+                            let _ = manager.set_dpt(addr, dpt);
+                        }
                         match manager.write(addr, value).await {
                             Ok(_) => Ok(json!({ "written": true })),
                             Err(e) => Err(format!("Write command failed: {:?}", e)),
