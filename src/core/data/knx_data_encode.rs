@@ -1,5 +1,5 @@
-use crate::errors::KnxError;
 use crate::core::data::knx_data_decode::{DptValue, KnxDataDecode};
+use crate::errors::KnxError;
 use byteorder::{BigEndian, ByteOrder};
 
 pub struct KnxDataEncoder;
@@ -27,15 +27,9 @@ impl KnxDataEncoder {
         let resolved = Self::fallback_dpt(dpt_num);
 
         match (resolved, data) {
-            (1, DptValue::Dpt1(b)) => {
-                Ok(vec![if *b { 0x01 } else { 0x00 }])
-            }
-            (2, DptValue::Dpt2(v)) => {
-                Ok(vec![(v.control << 1) | (v.value & 0x01)])
-            }
-            (3007 | 3008, DptValue::Dpt3(v)) => {
-                Ok(vec![(v.control << 3) | (v.step_code & 0x07)])
-            }
+            (1, DptValue::Dpt1(b)) => Ok(vec![if *b { 0x01 } else { 0x00 }]),
+            (2, DptValue::Dpt2(v)) => Ok(vec![(v.control << 1) | (v.value & 0x01)]),
+            (3007 | 3008, DptValue::Dpt3(v)) => Ok(vec![(v.control << 3) | (v.step_code & 0x07)]),
             (4001 | 4002, DptValue::Dpt4(c)) => {
                 let val = *c as u8;
                 if resolved == 4001 && (val & 0x80) != 0 {
@@ -43,34 +37,38 @@ impl KnxDataEncoder {
                 }
                 Ok(vec![val])
             }
-            (5, DptValue::Dpt5(v)) => {
-                Ok(vec![*v])
-            }
+            (5, DptValue::Dpt5(v)) => Ok(vec![*v]),
             (5001, DptValue::Dpt5001(s)) => {
                 // Parse percent string like "50.0%"
                 let s_clean = s.trim_end_matches('%');
-                let pct = s_clean.parse::<f32>().map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let pct = s_clean
+                    .parse::<f32>()
+                    .map_err(|_| KnxError::InvalidParametersForDpt)?;
                 let byte_val = ((pct / 100.0) * 255.0).round() as u8;
                 Ok(vec![byte_val])
             }
             (5002, DptValue::Dpt5002(s)) => {
                 // Parse angle string like "180.0ª"
                 let s_clean = s.trim_end_matches('ª').trim_end_matches('°');
-                let angle = s_clean.parse::<f32>().map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let angle = s_clean
+                    .parse::<f32>()
+                    .map_err(|_| KnxError::InvalidParametersForDpt)?;
                 let byte_val = ((angle / 360.0) * 255.0).round() as u8;
                 Ok(vec![byte_val])
             }
-            (6, DptValue::Dpt6(v)) => {
-                Ok(vec![*v as u8])
-            }
+            (6, DptValue::Dpt6(v)) => Ok(vec![*v as u8]),
             (6001, DptValue::Dpt6001(s)) => {
                 let s_clean = s.trim_end_matches('%');
-                let pct = s_clean.parse::<i8>().map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let pct = s_clean
+                    .parse::<i8>()
+                    .map_err(|_| KnxError::InvalidParametersForDpt)?;
                 Ok(vec![pct as u8])
             }
             (6010, DptValue::Dpt6010(s)) => {
                 let s_clean = s.trim_end_matches(" counter pulses").trim();
-                let pulses = s_clean.parse::<i8>().map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let pulses = s_clean
+                    .parse::<i8>()
+                    .map_err(|_| KnxError::InvalidParametersForDpt)?;
                 Ok(vec![pulses as u8])
             }
             (6020, DptValue::Dpt6020(v)) => {
@@ -88,51 +86,81 @@ impl KnxDataEncoder {
                 BigEndian::write_u16(&mut buf, *v);
                 Ok(buf)
             }
-            (7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7011 | 7013, DptValue::Dpt7Suffix(s)) => {
+            (
+                7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7011 | 7013,
+                DptValue::Dpt7Suffix(s),
+            ) => {
                 // Determine multipliers based on resolved sub-types
                 let val = match resolved {
                     7001 => {
-                        let parsed = s.trim_end_matches("pulses").trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches("pulses")
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
                     7002 => {
-                        let parsed = s.trim_end_matches("ms").trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches("ms")
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
                     7003 => {
-                        let parsed = s.trim_end_matches('s').trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches('s')
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         (parsed * 100.0).round() as u16
                     }
                     7004 => {
-                        let parsed = s.trim_end_matches('s').trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches('s')
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         (parsed * 10.0).round() as u16
                     }
                     7005 => {
-                        let parsed = s.trim_end_matches('s').trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches('s')
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
                     7006 => {
-                        let parsed = s.trim_end_matches("min").trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches("min")
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
                     7007 => {
-                        let parsed = s.trim_end_matches('h').trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches('h')
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
                     7011 => {
-                        let parsed = s.trim_end_matches("mm").trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches("mm")
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
                     7013 => {
-                        let parsed = s.trim_end_matches("lux").trim().parse::<f32>()
+                        let parsed = s
+                            .trim_end_matches("lux")
+                            .trim()
+                            .parse::<f32>()
                             .map_err(|_| KnxError::InvalidParametersForDpt)?;
                         parsed as u16
                     }
@@ -143,7 +171,11 @@ impl KnxDataEncoder {
                 Ok(buf)
             }
             (7012, DptValue::Dpt7012(v)) => {
-                let parsed = v.value.trim_end_matches("mA").trim().parse::<u16>()
+                let parsed = v
+                    .value
+                    .trim_end_matches("mA")
+                    .trim()
+                    .parse::<u16>()
                     .unwrap_or(0);
                 let mut buf = vec![0u8; 2];
                 BigEndian::write_u16(&mut buf, parsed);
@@ -202,7 +234,10 @@ impl KnxDataEncoder {
                 BigEndian::write_u32(&mut buf, *v);
                 Ok(buf)
             }
-            (13 | 13001 | 13002 | 13010 | 13011 | 13012 | 13013 | 13014 | 13015 | 13016 | 13100, DptValue::Dpt13(v)) => {
+            (
+                13 | 13001 | 13002 | 13010 | 13011 | 13012 | 13013 | 13014 | 13015 | 13016 | 13100,
+                DptValue::Dpt13(v),
+            ) => {
                 let mut buf = vec![0u8; 4];
                 BigEndian::write_i32(&mut buf, *v);
                 Ok(buf)
@@ -219,12 +254,12 @@ impl KnxDataEncoder {
                 buf[..limit].copy_from_slice(&bytes[..limit]);
                 Ok(buf)
             }
-            (20 | 20001 | 20002 | 20003 | 20004 | 20005 | 20006 | 20007 | 20008 | 20011 | 20012 | 20013 | 20014 | 20017 | 20020 | 20021 | 20022, DptValue::Dpt20(v)) => {
-                Ok(vec![*v])
-            }
-            (232600, DptValue::Dpt232(v)) => {
-                Ok(vec![v.r, v.g, v.b])
-            }
+            (
+                20 | 20001 | 20002 | 20003 | 20004 | 20005 | 20006 | 20007 | 20008 | 20011 | 20012
+                | 20013 | 20014 | 20017 | 20020 | 20021 | 20022,
+                DptValue::Dpt20(v),
+            ) => Ok(vec![*v]),
+            (232600, DptValue::Dpt232(v)) => Ok(vec![v.r, v.g, v.b]),
             (251600, DptValue::Dpt251(v)) => {
                 let mut buf = vec![0u8; 6];
                 buf[0] = v.r.value;
@@ -232,18 +267,24 @@ impl KnxDataEncoder {
                 buf[2] = v.b.value;
                 buf[3] = v.w.value;
                 buf[4] = 0; // Reserved
-                
+
                 let mut validity_bits = 0u8;
-                if v.r.valid { validity_bits |= 0x08; }
-                if v.g.valid { validity_bits |= 0x04; }
-                if v.b.valid { validity_bits |= 0x02; }
-                if v.w.valid { validity_bits |= 0x01; }
+                if v.r.valid {
+                    validity_bits |= 0x08;
+                }
+                if v.g.valid {
+                    validity_bits |= 0x04;
+                }
+                if v.b.valid {
+                    validity_bits |= 0x02;
+                }
+                if v.w.valid {
+                    validity_bits |= 0x01;
+                }
                 buf[5] = validity_bits;
                 Ok(buf)
             }
-            (_, DptValue::Raw(v)) => {
-                Ok(v.clone())
-            }
+            (_, DptValue::Raw(v)) => Ok(v.clone()),
             _ => Err(KnxError::InvalidParametersForDpt),
         }
     }

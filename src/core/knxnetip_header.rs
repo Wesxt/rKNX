@@ -22,7 +22,7 @@ impl KnxNetIpHeader {
         let mut buffer = vec![0u8; 6];
         buffer[0] = Self::HEADER_SIZE_10;
         buffer[1] = Self::KNXNETIP_VERSION_10;
-        
+
         let type_val = self.service_type as u16;
         buffer[2] = (type_val >> 8) as u8;
         buffer[3] = (type_val & 0xFF) as u8;

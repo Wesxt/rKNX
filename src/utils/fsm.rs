@@ -36,7 +36,8 @@ where
     }
 
     pub fn transition(&mut self, event: Event) -> bool {
-        if let Some(next_state) = self.transitions
+        if let Some(next_state) = self
+            .transitions
             .get(&self.current_state)
             .and_then(|t| t.get(&event))
         {

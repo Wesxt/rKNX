@@ -290,7 +290,11 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
         if *state_guard == TpuartState::ResetWait {
             let old = *state_guard;
             *state_guard = TpuartState::SetAddrWait;
-            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
+            ctx.logger.info(&format!(
+                "FSM: State transition from {} to {}",
+                format_tpuart_state(old),
+                format_tpuart_state(*state_guard)
+            ));
 
             if let Ok(addr_buf) =
                 KnxHelper::get_address_from_string(&ctx.options.individual_address)
@@ -302,12 +306,20 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
 
             let old = *state_guard;
             *state_guard = TpuartState::GetStateWait;
-            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
+            ctx.logger.info(&format!(
+                "FSM: State transition from {} to {}",
+                format_tpuart_state(old),
+                format_tpuart_state(*state_guard)
+            ));
             let _ = ctx.raw_write_tx.try_send(vec![UART_SERVICES_STATE_REQ]);
         } else if *state_guard == TpuartState::Online {
             let old = *state_guard;
             *state_guard = TpuartState::ResetWait;
-            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
+            ctx.logger.info(&format!(
+                "FSM: State transition from {} to {}",
+                format_tpuart_state(old),
+                format_tpuart_state(*state_guard)
+            ));
             let _ = ctx.raw_write_tx.try_send(vec![UART_SERVICES_RESET_REQ]);
         }
         return;
@@ -336,7 +348,11 @@ fn handle_control_byte_static(byte: u8, ctx: &TpuartContext) {
         if *state_guard != TpuartState::Online {
             let old = *state_guard;
             *state_guard = TpuartState::Online;
-            ctx.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_guard)));
+            ctx.logger.info(&format!(
+                "FSM: State transition from {} to {}",
+                format_tpuart_state(old),
+                format_tpuart_state(*state_guard)
+            ));
 
             let _ = ctx.event_tx.send(TpuartEvent::Connected);
 
@@ -354,7 +370,10 @@ impl KnxService for TpuartConnection {
             return Ok(());
         }
 
-        self.logger.info(&format!("Initializing TPUART serial connection at {}...", self.options.path));
+        self.logger.info(&format!(
+            "Initializing TPUART serial connection at {}...",
+            self.options.path
+        ));
 
         #[cfg(feature = "serial")]
         {
@@ -364,7 +383,8 @@ impl KnxService for TpuartConnection {
                 .stop_bits(tokio_serial::StopBits::One)
                 .open_native_async()
                 .map_err(|e| {
-                    self.logger.error(&format!("Failed to open serial port: {:?}", e));
+                    self.logger
+                        .error(&format!("Failed to open serial port: {:?}", e));
                     KnxError::Io(e.to_string())
                 })?;
 
@@ -567,7 +587,11 @@ impl KnxService for TpuartConnection {
                 let mut state_g = self.state.write().unwrap();
                 let old = *state_g;
                 *state_g = TpuartState::ResetWait;
-                self.logger.info(&format!("FSM: State transition from {} to {}", format_tpuart_state(old), format_tpuart_state(*state_g)));
+                self.logger.info(&format!(
+                    "FSM: State transition from {} to {}",
+                    format_tpuart_state(old),
+                    format_tpuart_state(*state_g)
+                ));
             }
             let _ = raw_write_tx.send(vec![UART_SERVICES_RESET_REQ]).await;
 
@@ -618,7 +642,9 @@ impl KnxService for TpuartConnection {
         }
         #[cfg(not(feature = "serial"))]
         {
-            Err(KnxError::Protocol("Serial feature is not enabled".to_string()))
+            Err(KnxError::Protocol(
+                "Serial feature is not enabled".to_string(),
+            ))
         }
     }
 
@@ -629,7 +655,8 @@ impl KnxService for TpuartConnection {
         }
         *state_g = TpuartState::Disconnected;
 
-        self.logger.info("Disconnected from TPUART serial interface.");
+        self.logger
+            .info("Disconnected from TPUART serial interface.");
         let _ = self.event_tx.send(TpuartEvent::Disconnected);
 
         #[cfg(feature = "serial")]
@@ -645,7 +672,9 @@ impl KnxService for TpuartConnection {
 
     async fn send(&self, cemi: &Cemi) -> Result<(), KnxError> {
         if *self.state.read().unwrap() != TpuartState::Online {
-            return Err(KnxError::Protocol("TPUART connection is not online".to_string()));
+            return Err(KnxError::Protocol(
+                "TPUART connection is not online".to_string(),
+            ));
         }
 
         let _ = GroupAddressCache::get_instance()

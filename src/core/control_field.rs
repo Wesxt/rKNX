@@ -32,7 +32,9 @@ pub struct ControlField {
 
 impl ControlField {
     pub fn new(initial_value: u8) -> Self {
-        Self { buffer: [initial_value] }
+        Self {
+            buffer: [initial_value],
+        }
     }
 
     /// Bit 7: Frame Type (FT) - 0: extended, 1: standard

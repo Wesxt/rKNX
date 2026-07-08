@@ -1,21 +1,21 @@
 #![allow(async_fn_in_trait)]
 
-pub mod tunneling;
 pub mod router;
-pub mod tunnel_connection;
 pub mod server;
-pub mod usb;
 pub mod tpuart;
+pub mod tunnel_connection;
+pub mod tunneling;
+pub mod usb;
 
 use crate::core::cemi::{Cemi, LData};
 use crate::core::control_field::ControlField;
 use crate::core::control_field_extended::ExtendedControlField;
+use crate::core::data::knx_data_decode::DptValue;
+use crate::core::data::knx_data_encode::KnxDataEncoder;
 use crate::core::layers::data::apdu::Apdu;
 use crate::core::layers::data::tpdu::Tpdu;
 use crate::core::layers::interfaces::apci::{Apci, ApciEnum};
 use crate::core::layers::interfaces::tpci::Tpci;
-use crate::core::data::knx_data_decode::DptValue;
-use crate::core::data::knx_data_encode::KnxDataEncoder;
 use crate::errors::KnxError;
 
 pub trait KnxService: Send + Sync {
@@ -32,7 +32,7 @@ pub trait KnxService: Send + Sync {
 
         let cf1 = ControlField::new(0xBC);
         let cf2 = ExtendedControlField::new(0xE0);
-        
+
         let tpci = Tpci::new(0x00);
         let apci = Apci::new(ApciEnum::AGroupValueWrite as u16);
         let tpdu = Tpdu {

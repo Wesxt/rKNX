@@ -1,7 +1,7 @@
-use crate::core::cemi::{Cemi, LData, LRaw, LBusmon};
-use crate::core::emi::{Emi, LDataEmi, LRawEmi, LBusmonEmi};
+use crate::core::cemi::{Cemi, LBusmon, LData, LRaw};
 use crate::core::control_field::ControlField;
 use crate::core::control_field_extended::ExtendedControlField;
+use crate::core::emi::{Emi, LBusmonEmi, LDataEmi, LRawEmi};
 use crate::core::layers::data::npdu::Npdu;
 use crate::errors::KnxError;
 
@@ -25,8 +25,10 @@ impl CemiAdapter {
                     tpdu: ld.npdu.tpdu,
                 };
 
-                let req_mc = crate::core::message_code_field::get_emi_message_code("L_Data.req").unwrap_or(0x11);
-                let con_mc = crate::core::message_code_field::get_emi_message_code("L_Data.con").unwrap_or(0x2E);
+                let req_mc = crate::core::message_code_field::get_emi_message_code("L_Data.req")
+                    .unwrap_or(0x11);
+                let con_mc = crate::core::message_code_field::get_emi_message_code("L_Data.con")
+                    .unwrap_or(0x2E);
 
                 if ld.message_code == req_mc {
                     Ok(Cemi::LDataReq(cemi_data))
@@ -36,19 +38,19 @@ impl CemiAdapter {
                     Ok(Cemi::LDataInd(cemi_data))
                 }
             }
-            Emi::LBusmonInd(lb) => {
-                Ok(Cemi::LBusmonInd(LBusmon {
-                    additional_info: Vec::new(),
-                    data: lb.data,
-                }))
-            }
+            Emi::LBusmonInd(lb) => Ok(Cemi::LBusmonInd(LBusmon {
+                additional_info: Vec::new(),
+                data: lb.data,
+            })),
             Emi::LRawReq(lr) | Emi::LRawCon(lr) | Emi::LRawInd(lr) => {
                 let cemi_raw = LRaw {
                     additional_info: Vec::new(),
                     data: lr.data,
                 };
-                let req_mc = crate::core::message_code_field::get_emi_message_code("L_Raw.req").unwrap_or(0x10);
-                let con_mc = crate::core::message_code_field::get_emi_message_code("L_Raw.con").unwrap_or(0x2F);
+                let req_mc = crate::core::message_code_field::get_emi_message_code("L_Raw.req")
+                    .unwrap_or(0x10);
+                let con_mc = crate::core::message_code_field::get_emi_message_code("L_Raw.con")
+                    .unwrap_or(0x2F);
 
                 if lr.message_code == req_mc {
                     Ok(Cemi::LRawReq(cemi_raw))
@@ -58,9 +60,7 @@ impl CemiAdapter {
                     Ok(Cemi::LRawInd(cemi_raw))
                 }
             }
-            _ => {
-                Err(KnxError::InvalidParametersForDpt)
-            }
+            _ => Err(KnxError::InvalidParametersForDpt),
         }
     }
 
@@ -83,8 +83,10 @@ impl CemiAdapter {
                     npdu,
                 };
 
-                let req_mc = crate::core::message_code_field::get_cemi_message_code("L_Data.req").unwrap_or(0x11);
-                let con_mc = crate::core::message_code_field::get_cemi_message_code("L_Data.con").unwrap_or(0x2E);
+                let req_mc = crate::core::message_code_field::get_cemi_message_code("L_Data.req")
+                    .unwrap_or(0x11);
+                let con_mc = crate::core::message_code_field::get_cemi_message_code("L_Data.con")
+                    .unwrap_or(0x2E);
                 let cemi_mc = cemi.get_message_code();
 
                 if cemi_mc == req_mc {
@@ -96,7 +98,9 @@ impl CemiAdapter {
                 }
             }
             Cemi::LBusmonInd(lb) => {
-                let busmon_mc = crate::core::message_code_field::get_emi_message_code("L_Busmon.ind").unwrap_or(0x2B);
+                let busmon_mc =
+                    crate::core::message_code_field::get_emi_message_code("L_Busmon.ind")
+                        .unwrap_or(0x2B);
                 Ok(Emi::LBusmonInd(LBusmonEmi {
                     message_code: busmon_mc,
                     data: lb.data.clone(),
@@ -107,8 +111,10 @@ impl CemiAdapter {
                     message_code: cemi.get_message_code(),
                     data: lr.data.clone(),
                 };
-                let req_mc = crate::core::message_code_field::get_cemi_message_code("L_Raw.req").unwrap_or(0x10);
-                let con_mc = crate::core::message_code_field::get_cemi_message_code("L_Raw.con").unwrap_or(0x2F);
+                let req_mc = crate::core::message_code_field::get_cemi_message_code("L_Raw.req")
+                    .unwrap_or(0x10);
+                let con_mc = crate::core::message_code_field::get_cemi_message_code("L_Raw.con")
+                    .unwrap_or(0x2F);
                 let cemi_mc = cemi.get_message_code();
 
                 if cemi_mc == req_mc {

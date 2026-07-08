@@ -213,7 +213,8 @@ impl KnxService for KnxUsbConnection {
             let mut s = self.state.write().unwrap();
             let old = *s;
             *s = KnxUsbState::Connecting;
-            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+            self.logger
+                .info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
         }
 
         self.logger.info("Opening KNX USB device...");
@@ -221,20 +222,22 @@ impl KnxService for KnxUsbConnection {
         #[cfg(feature = "usb")]
         {
             let api = HidApi::new().map_err(|e| {
-                self.logger.error(&format!("Failed to initialize HidApi: {:?}", e));
+                self.logger
+                    .error(&format!("Failed to initialize HidApi: {:?}", e));
                 KnxError::Io(e.to_string())
             })?;
 
             // Resolve and open HID device
             let device = if let Some(ref path) = self.options.path {
-                self.logger.info(&format!("Opening KNX USB device at path: {}", path));
+                self.logger
+                    .info(&format!("Opening KNX USB device at path: {}", path));
                 let c_path = std::ffi::CString::new(path.as_str())
                     .map_err(|_| KnxError::InvalidParametersForDpt)?;
-                api.open_path(&c_path)
-                    .map_err(|e| {
-                        self.logger.error(&format!("Failed to open device at path: {:?}", e));
-                        KnxError::Io(e.to_string())
-                    })?
+                api.open_path(&c_path).map_err(|e| {
+                    self.logger
+                        .error(&format!("Failed to open device at path: {:?}", e));
+                    KnxError::Io(e.to_string())
+                })?
             } else {
                 let devices = api.device_list();
                 let knx_device = devices
@@ -261,11 +264,11 @@ impl KnxService for KnxUsbConnection {
                     knx_device.product_id()
                 ));
 
-                api.open_path(knx_device.path())
-                    .map_err(|e| {
-                        self.logger.error(&format!("Failed to open device path: {:?}", e));
-                        KnxError::Io(e.to_string())
-                    })?
+                api.open_path(knx_device.path()).map_err(|e| {
+                    self.logger
+                        .error(&format!("Failed to open device path: {:?}", e));
+                    KnxError::Io(e.to_string())
+                })?
             };
 
             let device_arc = Arc::new(Mutex::new(device));
@@ -458,10 +461,13 @@ impl KnxService for KnxUsbConnection {
                 let mut s = self.state.write().unwrap();
                 let old = *s;
                 *s = KnxUsbState::Connected;
-                self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                self.logger.info(
+                    &format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase(),
+                );
             }
 
-            self.logger.info("Connected to KNX USB device successfully.");
+            self.logger
+                .info("Connected to KNX USB device successfully.");
             let _ = self.event_tx.send(UsbEvent::Connected);
 
             return Ok(());
@@ -480,7 +486,8 @@ impl KnxService for KnxUsbConnection {
         }
         let old = *s;
         *s = KnxUsbState::Disconnected;
-        self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+        self.logger
+            .info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
 
         self.logger.info("Disconnected from KNX USB device.");
         let _ = self.event_tx.send(UsbEvent::Disconnected);

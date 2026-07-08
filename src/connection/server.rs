@@ -789,7 +789,9 @@ impl KnxNetIpServer {
                     let mut clients = self.clients.write().unwrap();
                     if let Some(mut conn) = clients.remove(&channel_id) {
                         conn.close();
-                        let _ = self.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
+                        let _ = self
+                            .event_tx
+                            .send(ServerEvent::DisconnectedClient(channel_id));
                     }
                 }
 
@@ -830,7 +832,9 @@ impl KnxNetIpServer {
                         if flood_threshold > 0 && conn.rx_count > flood_threshold {
                             conn.close();
                             clients.remove(&channel_id);
-                            let _ = self.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
+                            let _ = self
+                                .event_tx
+                                .send(ServerEvent::DisconnectedClient(channel_id));
 
                             // Send DISCONNECT_REQUEST to client
                             let server_hpai = self.get_hpai(Some(rinfo));
@@ -895,7 +899,9 @@ impl KnxNetIpServer {
                 if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                     let _ = self.incoming_tx.send(cemi.clone());
                     let _ = self.event_tx.send(ServerEvent::Indication(cemi.clone()));
-                    let _ = self.event_tx.send(ServerEvent::RawIndication(mut_cemi_bytes.clone()));
+                    let _ = self
+                        .event_tx
+                        .send(ServerEvent::RawIndication(mut_cemi_bytes.clone()));
                     self.logger.log_indication(&cemi);
                     self.logger.log_indication_raw(&mut_cemi_bytes);
                     let _ =
@@ -1051,7 +1057,9 @@ impl KnxNetIpServer {
                 if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                     let _ = self.incoming_tx.send(cemi.clone());
                     let _ = self.event_tx.send(ServerEvent::Indication(cemi.clone()));
-                    let _ = self.event_tx.send(ServerEvent::RawIndication(msg[cemi_start..].to_vec()));
+                    let _ = self
+                        .event_tx
+                        .send(ServerEvent::RawIndication(msg[cemi_start..].to_vec()));
                     self.logger.log_indication(&cemi);
                     self.logger.log_indication_raw(&msg[cemi_start..]);
                     let _ =
@@ -1104,9 +1112,13 @@ impl KnxNetIpServer {
                         data: lost.to_buffer(),
                     });
                     let _ = self.incoming_tx.send(cemi.clone());
-                    let _ = self.event_tx.send(ServerEvent::RoutingLostMessage(lost.clone()));
+                    let _ = self
+                        .event_tx
+                        .send(ServerEvent::RoutingLostMessage(lost.clone()));
                     let _ = self.event_tx.send(ServerEvent::Indication(cemi.clone()));
-                    let _ = self.event_tx.send(ServerEvent::RawIndication(body.to_vec()));
+                    let _ = self
+                        .event_tx
+                        .send(ServerEvent::RawIndication(body.to_vec()));
                     self.logger.log_indication(&cemi);
                     self.logger.log_indication_raw(body);
                 }
@@ -1520,7 +1532,8 @@ impl KnxService for KnxNetIpServer {
                         if let Some(mut conn) = clients.remove(&channel_id) {
                             conn.close();
                             conn_to_close = Some(conn);
-                            let _ = event_tx_check.send(ServerEvent::DisconnectedClient(channel_id));
+                            let _ =
+                                event_tx_check.send(ServerEvent::DisconnectedClient(channel_id));
                         }
                     }
 
@@ -1973,7 +1986,9 @@ async fn handle_message_static(
                 let mut clients = ctx.clients.write().unwrap();
                 if let Some(mut conn) = clients.remove(&channel_id) {
                     conn.close();
-                    let _ = ctx.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
+                    let _ = ctx
+                        .event_tx
+                        .send(ServerEvent::DisconnectedClient(channel_id));
                 }
             }
 
@@ -2014,7 +2029,9 @@ async fn handle_message_static(
                         let ep = conn.control_endpoint();
                         conn.close();
                         clients.remove(&channel_id);
-                        let _ = ctx.event_tx.send(ServerEvent::DisconnectedClient(channel_id));
+                        let _ = ctx
+                            .event_tx
+                            .send(ServerEvent::DisconnectedClient(channel_id));
                         flood_disconnect = Some(ep);
                         (
                             RequestAction::Discard,
@@ -2107,7 +2124,9 @@ async fn handle_message_static(
             if let Ok(cemi) = Cemi::from_buffer(&mut_cemi_bytes) {
                 let _ = ctx.incoming_tx.send(cemi.clone());
                 let _ = ctx.event_tx.send(ServerEvent::Indication(cemi.clone()));
-                let _ = ctx.event_tx.send(ServerEvent::RawIndication(mut_cemi_bytes.clone()));
+                let _ = ctx
+                    .event_tx
+                    .send(ServerEvent::RawIndication(mut_cemi_bytes.clone()));
                 ctx.logger.log_indication(&cemi);
                 ctx.logger.log_indication_raw(&mut_cemi_bytes);
                 let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
@@ -2283,7 +2302,9 @@ async fn handle_message_static(
             if let Ok(cemi) = Cemi::from_buffer(&msg[cemi_start..]) {
                 let _ = ctx.incoming_tx.send(cemi.clone());
                 let _ = ctx.event_tx.send(ServerEvent::Indication(cemi.clone()));
-                let _ = ctx.event_tx.send(ServerEvent::RawIndication(msg[cemi_start..].to_vec()));
+                let _ = ctx
+                    .event_tx
+                    .send(ServerEvent::RawIndication(msg[cemi_start..].to_vec()));
                 ctx.logger.log_indication(&cemi);
                 ctx.logger.log_indication_raw(&msg[cemi_start..]);
                 let _ = crate::core::cache::group_address_cache::GroupAddressCache::get_instance()
@@ -2329,7 +2350,9 @@ async fn handle_message_static(
                     data: lost.to_buffer(),
                 });
                 let _ = ctx.incoming_tx.send(cemi.clone());
-                let _ = ctx.event_tx.send(ServerEvent::RoutingLostMessage(lost.clone()));
+                let _ = ctx
+                    .event_tx
+                    .send(ServerEvent::RoutingLostMessage(lost.clone()));
                 let _ = ctx.event_tx.send(ServerEvent::Indication(cemi.clone()));
                 let _ = ctx.event_tx.send(ServerEvent::RawIndication(body.to_vec()));
                 ctx.logger.log_indication(&cemi);

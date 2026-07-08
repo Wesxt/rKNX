@@ -1,6 +1,6 @@
-use rusqlite::{params, Connection};
-use std::sync::{Arc, Mutex};
+use rusqlite::{Connection, params};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
@@ -20,7 +20,7 @@ impl DbManager {
 
     fn init_schema(&self) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS connection_config (
                 id INTEGER PRIMARY KEY,
@@ -75,7 +75,12 @@ impl DbManager {
         Ok(())
     }
 
-    pub fn save_connection_config(&self, conn_type: &str, opts_json: &str, is_connected: bool) -> Result<(), rusqlite::Error> {
+    pub fn save_connection_config(
+        &self,
+        conn_type: &str,
+        opts_json: &str,
+        is_connected: bool,
+    ) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO connection_config (id, connection_type, options_json, is_connected)
@@ -110,7 +115,10 @@ impl DbManager {
 
     pub fn remove_dpt_config(&self, addr: &str) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM dpt_configs WHERE group_address = ?1;", params![addr])?;
+        conn.execute(
+            "DELETE FROM dpt_configs WHERE group_address = ?1;",
+            params![addr],
+        )?;
         Ok(())
     }
 
@@ -129,13 +137,19 @@ impl DbManager {
 
     pub fn add_subscription(&self, addr: &str) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("INSERT OR IGNORE INTO subscriptions (group_address) VALUES (?1);", params![addr])?;
+        conn.execute(
+            "INSERT OR IGNORE INTO subscriptions (group_address) VALUES (?1);",
+            params![addr],
+        )?;
         Ok(())
     }
 
     pub fn remove_subscription(&self, addr: &str) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM subscriptions WHERE group_address = ?1;", params![addr])?;
+        conn.execute(
+            "DELETE FROM subscriptions WHERE group_address = ?1;",
+            params![addr],
+        )?;
         Ok(())
     }
 
@@ -158,7 +172,8 @@ impl DbManager {
 
     pub fn get_retention(&self) -> Result<i64, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT value_seconds FROM config_retention WHERE key = 'retention';")?;
+        let mut stmt =
+            conn.prepare("SELECT value_seconds FROM config_retention WHERE key = 'retention';")?;
         let mut rows = stmt.query([])?;
         if let Some(row) = rows.next()? {
             Ok(row.get(0)?)
@@ -167,7 +182,14 @@ impl DbManager {
         }
     }
 
-    pub fn save_indication(&self, timestamp: i64, addr: &str, cemi_raw: &[u8], description: &str, value: Option<&str>) -> Result<(), rusqlite::Error> {
+    pub fn save_indication(
+        &self,
+        timestamp: i64,
+        addr: &str,
+        cemi_raw: &[u8],
+        description: &str,
+        value: Option<&str>,
+    ) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO indications_history (timestamp, group_address, cemi_raw, description, value)
@@ -179,17 +201,26 @@ impl DbManager {
 
     pub fn clean_old_indications(&self, retention_seconds: i64) -> Result<usize, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let limit = now - retention_seconds;
-        let deleted = conn.execute("DELETE FROM indications_history WHERE timestamp < ?1;", params![limit])?;
+        let deleted = conn.execute(
+            "DELETE FROM indications_history WHERE timestamp < ?1;",
+            params![limit],
+        )?;
         Ok(deleted)
     }
 
-    pub fn get_indications_history(&self, limit: usize) -> Result<Vec<serde_json::Value>, rusqlite::Error> {
+    pub fn get_indications_history(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<serde_json::Value>, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, timestamp, group_address, cemi_raw, description, value
-             FROM indications_history ORDER BY id DESC LIMIT ?1;"
+             FROM indications_history ORDER BY id DESC LIMIT ?1;",
         )?;
         let rows = stmt.query_map(params![limit], |row| {
             let id: i64 = row.get(0)?;
@@ -198,10 +229,13 @@ impl DbManager {
             let cemi_raw: Vec<u8> = row.get(3)?;
             let description: String = row.get(4)?;
             let value: Option<String> = row.get(5)?;
-            
-            let desc_json: serde_json::Value = serde_json::from_str(&description).unwrap_or_else(|_| serde_json::json!(description));
-            let val_json: serde_json::Value = value.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or(serde_json::Value::Null);
-            
+
+            let desc_json: serde_json::Value = serde_json::from_str(&description)
+                .unwrap_or_else(|_| serde_json::json!(description));
+            let val_json: serde_json::Value = value
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(serde_json::Value::Null);
+
             let cemi_hex = hex_encode(cemi_raw);
 
             Ok(serde_json::json!({

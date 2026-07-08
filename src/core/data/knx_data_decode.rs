@@ -113,11 +113,12 @@ impl KnxDataDecode {
 
     pub fn fallback_dpt(dpt_num: u32) -> u32 {
         let list = [
-            1, 2, 3007, 3008, 4001, 4002, 5, 5001, 5002, 6, 6001, 6010, 6020, 7, 7001, 7002, 7003, 7004, 7005, 7006, 7007,
-            7011, 7012, 7013, 8, 9, 10001, 11001, 12001, 12002, 13, 13001, 13002, 13010, 13011, 13012, 13013, 13014, 13015,
-            13016, 13100, 14, 15000, 16, 16002, 20, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20008, 20011, 20012,
-            20013, 20014, 20017, 20020, 20021, 20022, 27001, 28001, 29, 29010, 29011, 29012, 232600, 238600, 245600, 250600,
-            251600,
+            1, 2, 3007, 3008, 4001, 4002, 5, 5001, 5002, 6, 6001, 6010, 6020, 7, 7001, 7002, 7003,
+            7004, 7005, 7006, 7007, 7011, 7012, 7013, 8, 9, 10001, 11001, 12001, 12002, 13, 13001,
+            13002, 13010, 13011, 13012, 13013, 13014, 13015, 13016, 13100, 14, 15000, 16, 16002,
+            20, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20008, 20011, 20012, 20013, 20014,
+            20017, 20020, 20021, 20022, 27001, 28001, 29, 29010, 29011, 29012, 232600, 238600,
+            245600, 250600, 251600,
         ];
         if list.contains(&dpt_num) {
             return dpt_num;
@@ -159,20 +160,33 @@ impl KnxDataDecode {
                         "Control. Function value 1 (DPT_BinaryValue_Control)".to_string()
                     }
                 };
-                Ok(DptValue::Dpt2(Dpt2Value { control, value, description }))
+                Ok(DptValue::Dpt2(Dpt2Value {
+                    control,
+                    value,
+                    description,
+                }))
             }
             3007 | 3008 => {
                 let raw_nibble = buffer[0] & 0x0F;
                 let control = (raw_nibble >> 3) & 0x01;
                 let step_code = raw_nibble & 0x07;
-                let action = if control == 0 { "Decrease".to_string() } else { "Increase".to_string() };
+                let action = if control == 0 {
+                    "Decrease".to_string()
+                } else {
+                    "Increase".to_string()
+                };
                 let description = if step_code == 0 {
                     "Break".to_string()
                 } else {
                     let intervals = 2u32.pow((step_code - 1) as u32);
                     format!("StepCode {} (Intervals: {})", step_code, intervals)
                 };
-                Ok(DptValue::Dpt3(Dpt3Value { control, step_code, action, description }))
+                Ok(DptValue::Dpt3(Dpt3Value {
+                    control,
+                    step_code,
+                    action,
+                    description,
+                }))
             }
             4001 | 4002 => {
                 let val = buffer[0];
@@ -181,9 +195,7 @@ impl KnxDataDecode {
                 }
                 Ok(DptValue::Dpt4(val as char))
             }
-            5 => {
-                Ok(DptValue::Dpt5(buffer[0]))
-            }
+            5 => Ok(DptValue::Dpt5(buffer[0])),
             5001 => {
                 let val = buffer[0];
                 let percent = (val as f32 / 255.0) * 100.0;
@@ -194,18 +206,19 @@ impl KnxDataDecode {
                 let angle = (val as f32 / 255.0) * 360.0;
                 Ok(DptValue::Dpt5002(format!("{:.1}ª", angle)))
             }
-            6 => {
-                Ok(DptValue::Dpt6(buffer[0] as i8))
-            }
-            6001 => {
-                Ok(DptValue::Dpt6001(format!("{}%", buffer[0] as i8)))
-            }
-            6010 => {
-                Ok(DptValue::Dpt6010(format!("{} counter pulses", buffer[0] as i8)))
-            }
+            6 => Ok(DptValue::Dpt6(buffer[0] as i8)),
+            6001 => Ok(DptValue::Dpt6001(format!("{}%", buffer[0] as i8))),
+            6010 => Ok(DptValue::Dpt6010(format!(
+                "{} counter pulses",
+                buffer[0] as i8
+            ))),
             6020 => {
                 let val = buffer[0];
-                let status = if (val >> 3) == 1 { "Activo".to_string() } else { "Inactivo".to_string() };
+                let status = if (val >> 3) == 1 {
+                    "Activo".to_string()
+                } else {
+                    "Inactivo".to_string()
+                };
                 let mode = val & 0x07;
                 let mode_text = match mode {
                     0x01 => "Modo 0 activo".to_string(),
@@ -213,7 +226,10 @@ impl KnxDataDecode {
                     0x04 => "Modo 2 activo".to_string(),
                     _ => "Modo desconocido".to_string(),
                 };
-                Ok(DptValue::Dpt6020(Dpt6020Value { status, mode: mode_text }))
+                Ok(DptValue::Dpt6020(Dpt6020Value {
+                    status,
+                    mode: mode_text,
+                }))
             }
             7 => {
                 if buffer.len() == 1 {
@@ -302,10 +318,29 @@ impl KnxDataDecode {
                 let hour = buffer[0] & 0x1F;
                 let minutes = buffer[1] & 0x3F;
                 let seconds = buffer[2] & 0x3F;
-                let days = ["No day", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-                let day_name = days.get(day as usize).copied().unwrap_or("Unknown").to_string();
+                let days = [
+                    "No day",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ];
+                let day_name = days
+                    .get(day as usize)
+                    .copied()
+                    .unwrap_or("Unknown")
+                    .to_string();
 
-                Ok(DptValue::Dpt10(Dpt10Value { day, day_name, hour, minutes, seconds }))
+                Ok(DptValue::Dpt10(Dpt10Value {
+                    day,
+                    day_name,
+                    hour,
+                    minutes,
+                    seconds,
+                }))
             }
             11001 => {
                 if buffer.len() < 3 {
@@ -320,7 +355,12 @@ impl KnxDataDecode {
                     year += 2000;
                 }
                 let formatted = format!("{:02}/{:02}/{:04}", day, month, year);
-                Ok(DptValue::Dpt11(Dpt11Value { day, month, year, formatted }))
+                Ok(DptValue::Dpt11(Dpt11Value {
+                    day,
+                    month,
+                    year,
+                    formatted,
+                }))
             }
             12001 | 12002 => {
                 if buffer.len() < 4 {
@@ -345,9 +385,8 @@ impl KnxDataDecode {
                 let s = String::from_utf8_lossy(&buffer[..null_pos]).into_owned();
                 Ok(DptValue::Dpt16(s))
             }
-            20 | 20001 | 20002 | 20003 | 20004 | 20005 | 20006 | 20007 | 20008 | 20011 | 20012 | 20013 | 20014 | 20017 | 20020 | 20021 | 20022 => {
-                Ok(DptValue::Dpt20(buffer[0]))
-            }
+            20 | 20001 | 20002 | 20003 | 20004 | 20005 | 20006 | 20007 | 20008 | 20011 | 20012
+            | 20013 | 20014 | 20017 | 20020 | 20021 | 20022 => Ok(DptValue::Dpt20(buffer[0])),
             232600 => {
                 if buffer.len() < 3 {
                     return Err(KnxError::InvalidParametersForDpt);
@@ -368,10 +407,22 @@ impl KnxDataDecode {
                 let w = buffer[3];
                 let validity_bits = buffer[5];
                 Ok(DptValue::Dpt251(Dpt251Value {
-                    r: Dpt251Val { value: r, valid: (validity_bits & 0x08) != 0 },
-                    g: Dpt251Val { value: g, valid: (validity_bits & 0x04) != 0 },
-                    b: Dpt251Val { value: b, valid: (validity_bits & 0x02) != 0 },
-                    w: Dpt251Val { value: w, valid: (validity_bits & 0x01) != 0 },
+                    r: Dpt251Val {
+                        value: r,
+                        valid: (validity_bits & 0x08) != 0,
+                    },
+                    g: Dpt251Val {
+                        value: g,
+                        valid: (validity_bits & 0x04) != 0,
+                    },
+                    b: Dpt251Val {
+                        value: b,
+                        valid: (validity_bits & 0x02) != 0,
+                    },
+                    w: Dpt251Val {
+                        value: w,
+                        valid: (validity_bits & 0x01) != 0,
+                    },
                 }))
             }
             _ => Ok(DptValue::Raw(buffer.to_vec())),

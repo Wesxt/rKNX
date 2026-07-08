@@ -128,13 +128,21 @@ impl SystemStatus {
         SystemStatusDescription {
             obj: "SystemStatus",
             prog: self.get_prog(),
-            llm: if self.get_llm() { "disabled" } else { "enabled" },
+            llm: if self.get_llm() {
+                "disabled"
+            } else {
+                "enabled"
+            },
             tle: self.get_tle(),
             ale: self.get_ale(),
             se: self.get_se(),
             ue: self.get_ue(),
             dm: self.get_dm(),
-            parity: if self.get_parity() { "even parity" } else { "disabled" },
+            parity: if self.get_parity() {
+                "even parity"
+            } else {
+                "disabled"
+            },
             value: self.value,
         }
     }

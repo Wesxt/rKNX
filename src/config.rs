@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
-use std::fs;
 use crate::connection::server::KnxNetIpServerOptions;
-use crate::connection::tunneling::{TunnelingOptions, TransportProtocol};
+use crate::connection::tunneling::{TransportProtocol, TunnelingOptions};
 use crate::core::knxnetip_enum::ConnectionType;
+use serde::{Deserialize, Serialize};
+use std::fs;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ServerConfig {
@@ -23,7 +23,7 @@ pub struct ServerConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClientConfig {
     pub gateway_host: Option<String>, // maps to ip
-    pub gateway_port: Option<u16>, // maps to port
+    pub gateway_port: Option<u16>,    // maps to port
     pub local_ip: Option<String>,
     pub local_port: Option<u16>,
     pub transport: Option<String>,
@@ -105,9 +105,9 @@ pub struct Config {
     pub api: Option<ApiConfig>,
 }
 
-use crate::connection::router::{RouterOptions, DirectionFilter, AddressFilter, FilterPolicy};
-use crate::connection::usb::KnxUsbOptions;
+use crate::connection::router::{AddressFilter, DirectionFilter, FilterPolicy, RouterOptions};
 use crate::connection::tpuart::TpuartOptions;
+use crate::connection::usb::KnxUsbOptions;
 
 impl Config {
     pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -122,9 +122,18 @@ impl Config {
             ip: sc.ip.clone().unwrap_or_else(|| "224.0.23.12".to_string()),
             port: sc.port.unwrap_or(3671),
             local_ip: sc.local_ip.clone().unwrap_or_else(|| "0.0.0.0".to_string()),
-            individual_address: sc.individual_address.clone().unwrap_or_else(|| "1.1.0".to_string()),
-            friendly_name: sc.friendly_name.clone().unwrap_or_else(|| "rKNX Server".to_string()),
-            mac_address: sc.mac_address.clone().unwrap_or_else(|| "00:11:22:33:44:55".to_string()),
+            individual_address: sc
+                .individual_address
+                .clone()
+                .unwrap_or_else(|| "1.1.0".to_string()),
+            friendly_name: sc
+                .friendly_name
+                .clone()
+                .unwrap_or_else(|| "rKNX Server".to_string()),
+            mac_address: sc
+                .mac_address
+                .clone()
+                .unwrap_or_else(|| "00:11:22:33:44:55".to_string()),
             routing_delay: sc.routing_delay.unwrap_or(10),
             client_addrs: sc.client_addrs.clone(),
             serial_number: None,
@@ -147,7 +156,10 @@ impl Config {
         };
 
         Some(TunnelingOptions {
-            ip: cc.gateway_host.clone().unwrap_or_else(|| "127.0.0.1".to_string()),
+            ip: cc
+                .gateway_host
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
             port: cc.gateway_port.unwrap_or(3671),
             local_ip: cc.local_ip.clone(),
             local_port: cc.local_port.unwrap_or(0),
@@ -163,7 +175,7 @@ impl Config {
 
     pub fn to_router_options(&self) -> Option<RouterOptions> {
         let rc = self.router.as_ref()?;
-        
+
         let map_filter = |dfc: &DirectionFilterConfig| {
             let map_addr = |afc: &AddressFilterConfig| {
                 let policy = match afc.policy.as_str() {
@@ -182,15 +194,28 @@ impl Config {
         };
 
         let to_ip_filter = rc.to_ip_filter.as_ref().map(map_filter).unwrap_or_default();
-        let to_local_filter = rc.to_local_filter.as_ref().map(map_filter).unwrap_or_default();
+        let to_local_filter = rc
+            .to_local_filter
+            .as_ref()
+            .map(map_filter)
+            .unwrap_or_default();
 
         let knx_net_ip_server = rc.server.as_ref().map(|sc| KnxNetIpServerOptions {
             ip: sc.ip.clone().unwrap_or_else(|| "224.0.23.12".to_string()),
             port: sc.port.unwrap_or(3671),
             local_ip: sc.local_ip.clone().unwrap_or_else(|| "0.0.0.0".to_string()),
-            individual_address: sc.individual_address.clone().unwrap_or_else(|| "1.1.0".to_string()),
-            friendly_name: sc.friendly_name.clone().unwrap_or_else(|| "rKNX Server".to_string()),
-            mac_address: sc.mac_address.clone().unwrap_or_else(|| "00:11:22:33:44:55".to_string()),
+            individual_address: sc
+                .individual_address
+                .clone()
+                .unwrap_or_else(|| "1.1.0".to_string()),
+            friendly_name: sc
+                .friendly_name
+                .clone()
+                .unwrap_or_else(|| "rKNX Server".to_string()),
+            mac_address: sc
+                .mac_address
+                .clone()
+                .unwrap_or_else(|| "00:11:22:33:44:55".to_string()),
             routing_delay: sc.routing_delay.unwrap_or(10),
             client_addrs: sc.client_addrs.clone(),
             serial_number: None,
@@ -204,44 +229,59 @@ impl Config {
             path: tc.path.clone(),
             ack_group: tc.ack_group.unwrap_or(false),
             ack_individual: tc.ack_individual.unwrap_or(false),
-            individual_address: tc.individual_address.clone().unwrap_or_else(|| "1.1.0".to_string()),
+            individual_address: tc
+                .individual_address
+                .clone()
+                .unwrap_or_else(|| "1.1.0".to_string()),
         });
 
         let tunneling = rc.tunneling.as_ref().map(|tc_list| {
-            tc_list.iter().map(|cc| {
-                let transport = match cc.transport.as_deref() {
-                    Some("Tcp") | Some("tcp") | Some("TCP") => TransportProtocol::Tcp,
-                    _ => TransportProtocol::Udp,
-                };
-                let connection_type = match cc.connection_type.as_deref() {
-                    Some("DeviceMgmtConnection") => ConnectionType::DeviceMgmtConnection,
-                    _ => ConnectionType::TunnelConnection,
-                };
-                TunnelingOptions {
-                    ip: cc.gateway_host.clone().unwrap_or_else(|| "127.0.0.1".to_string()),
-                    port: cc.gateway_port.unwrap_or(3671),
-                    local_ip: cc.local_ip.clone(),
-                    local_port: cc.local_port.unwrap_or(0),
-                    transport,
-                    connection_type,
-                    use_route_back: cc.use_route_back.unwrap_or(false),
-                    max_queue_size: cc.max_queue_size.unwrap_or(100),
-                    auto_reconnect: cc.auto_reconnect.unwrap_or(true),
-                    max_reconnect_attempts: cc.max_reconnect_attempts.unwrap_or(10),
-                    reconnect_delay_ms: cc.reconnect_delay_ms.unwrap_or(5000),
-                }
-            }).collect()
+            tc_list
+                .iter()
+                .map(|cc| {
+                    let transport = match cc.transport.as_deref() {
+                        Some("Tcp") | Some("tcp") | Some("TCP") => TransportProtocol::Tcp,
+                        _ => TransportProtocol::Udp,
+                    };
+                    let connection_type = match cc.connection_type.as_deref() {
+                        Some("DeviceMgmtConnection") => ConnectionType::DeviceMgmtConnection,
+                        _ => ConnectionType::TunnelConnection,
+                    };
+                    TunnelingOptions {
+                        ip: cc
+                            .gateway_host
+                            .clone()
+                            .unwrap_or_else(|| "127.0.0.1".to_string()),
+                        port: cc.gateway_port.unwrap_or(3671),
+                        local_ip: cc.local_ip.clone(),
+                        local_port: cc.local_port.unwrap_or(0),
+                        transport,
+                        connection_type,
+                        use_route_back: cc.use_route_back.unwrap_or(false),
+                        max_queue_size: cc.max_queue_size.unwrap_or(100),
+                        auto_reconnect: cc.auto_reconnect.unwrap_or(true),
+                        max_reconnect_attempts: cc.max_reconnect_attempts.unwrap_or(10),
+                        reconnect_delay_ms: cc.reconnect_delay_ms.unwrap_or(5000),
+                    }
+                })
+                .collect()
         });
 
         let usb = rc.usb.as_ref().map(|uc| KnxUsbOptions {
             path: uc.path.clone(),
             vendor_id: uc.vendor_id,
             product_id: uc.product_id,
-            individual_address: uc.individual_address.clone().unwrap_or_else(|| "1.1.0".to_string()),
+            individual_address: uc
+                .individual_address
+                .clone()
+                .unwrap_or_else(|| "1.1.0".to_string()),
         });
 
         Some(RouterOptions {
-            individual_address: rc.individual_address.clone().unwrap_or_else(|| "15.15.0".to_string()),
+            individual_address: rc
+                .individual_address
+                .clone()
+                .unwrap_or_else(|| "15.15.0".to_string()),
             use_single_ia: rc.use_single_ia.unwrap_or(true),
             handle_hop_count: rc.handle_hop_count.unwrap_or(false),
             to_ip_filter,

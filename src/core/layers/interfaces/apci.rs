@@ -192,28 +192,62 @@ impl ApciEnum {
             ApciEnum::AGroupValueWrite => "A_GroupValue_Write_Protocol_Data_Unit",
             ApciEnum::AIndividualAddressWrite => "A_IndividualAddress_Write_Protocol_Data_Unit",
             ApciEnum::AIndividualAddressRead => "A_IndividualAddress_Read_Protocol_Data_Unit",
-            ApciEnum::AIndividualAddressResponse => "A_IndividualAddress_Response_Protocol_Data_Unit",
-            ApciEnum::AAnalogToDigitalConverterRead => "A_Analog_to_Digital_Converter_Read_Protocol_Data_Unit",
-            ApciEnum::AAnalogToDigitalConverterResponse => "A_Analog_to_Digital_Converter_Response_Protocol_Data_Unit",
-            ApciEnum::ASystemNetworkParameterRead => "A_SystemNetworkParameter_Read_Protocol_Data_Unit",
-            ApciEnum::ASystemNetworkParameterResponse => "A_SystemNetworkParameter_Response_Protocol_Data_Unit",
-            ApciEnum::ASystemNetworkParameterWrite => "A_SystemNetworkParameter_Write_Protocol_Data_Unit",
-            ApciEnum::PlannedForFutureSystemBroadcastService => "planned_for_future_system_broadcast_service",
+            ApciEnum::AIndividualAddressResponse => {
+                "A_IndividualAddress_Response_Protocol_Data_Unit"
+            }
+            ApciEnum::AAnalogToDigitalConverterRead => {
+                "A_Analog_to_Digital_Converter_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::AAnalogToDigitalConverterResponse => {
+                "A_Analog_to_Digital_Converter_Response_Protocol_Data_Unit"
+            }
+            ApciEnum::ASystemNetworkParameterRead => {
+                "A_SystemNetworkParameter_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::ASystemNetworkParameterResponse => {
+                "A_SystemNetworkParameter_Response_Protocol_Data_Unit"
+            }
+            ApciEnum::ASystemNetworkParameterWrite => {
+                "A_SystemNetworkParameter_Write_Protocol_Data_Unit"
+            }
+            ApciEnum::PlannedForFutureSystemBroadcastService => {
+                "planned_for_future_system_broadcast_service"
+            }
             ApciEnum::APropertyExtValueRead => "A_PropertyExtValue_Read_Protocol_Data_Unit",
             ApciEnum::APropertyExtValueResponse => "A_PropertyExtValue_Response_Protocol_Data_Unit",
             ApciEnum::APropertyExtValueWriteCon => "A_PropertyExtValue_WriteCon_Protocol_Data_Unit",
-            ApciEnum::APropertyExtValueWriteConRes => "A_PropertyExtValue_WriteConRes_Protocol_Data_Unit",
-            ApciEnum::APropertyExtValueWriteUnCon => "A_PropertyExtValue_WriteUnCon_Protocol_Data_Unit",
-            ApciEnum::APropertyExtValueInfoReport => "A_PropertyExtValue_InfoReport_Protocol_Data_Unit",
-            ApciEnum::APropertyExtDescriptionRead => "A_PropertyExtDescription_Read_Protocol_Data_Unit",
-            ApciEnum::APropertyExtDescriptionResponse => "A_PropertyExtDescription_Response_Protocol_Data_Unit",
-            ApciEnum::AFunctionPropertyExtCommand => "A_FunctionPropertyExtCommand_Protocol_Data_Unit",
-            ApciEnum::AFunctionPropertyExtStateRead => "A_FunctionPropertyExtState_Read_Protocol_Data_Unit",
-            ApciEnum::AFunctionPropertyExtStateResponse => "A_FunctionPropertyExtState_Response_Protocol_Data_Unit",
+            ApciEnum::APropertyExtValueWriteConRes => {
+                "A_PropertyExtValue_WriteConRes_Protocol_Data_Unit"
+            }
+            ApciEnum::APropertyExtValueWriteUnCon => {
+                "A_PropertyExtValue_WriteUnCon_Protocol_Data_Unit"
+            }
+            ApciEnum::APropertyExtValueInfoReport => {
+                "A_PropertyExtValue_InfoReport_Protocol_Data_Unit"
+            }
+            ApciEnum::APropertyExtDescriptionRead => {
+                "A_PropertyExtDescription_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::APropertyExtDescriptionResponse => {
+                "A_PropertyExtDescription_Response_Protocol_Data_Unit"
+            }
+            ApciEnum::AFunctionPropertyExtCommand => {
+                "A_FunctionPropertyExtCommand_Protocol_Data_Unit"
+            }
+            ApciEnum::AFunctionPropertyExtStateRead => {
+                "A_FunctionPropertyExtState_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::AFunctionPropertyExtStateResponse => {
+                "A_FunctionPropertyExtState_Response_Protocol_Data_Unit"
+            }
             ApciEnum::AMemoryExtendedWrite => "A_MemoryExtended_Write_Protocol_Data_Unit",
-            ApciEnum::AMemoryExtendedWriteResponse => "A_MemoryExtended_WriteResponse_Protocol_Data_Unit",
+            ApciEnum::AMemoryExtendedWriteResponse => {
+                "A_MemoryExtended_WriteResponse_Protocol_Data_Unit"
+            }
             ApciEnum::AMemoryExtendedRead => "A_MemoryExtended_Read_Protocol_Data_Unit",
-            ApciEnum::AMemoryExtendedReadResponse => "A_MemoryExtended_ReadResponse_Protocol_Data_Unit",
+            ApciEnum::AMemoryExtendedReadResponse => {
+                "A_MemoryExtended_ReadResponse_Protocol_Data_Unit"
+            }
             ApciEnum::AMemoryRead => "A_Memory_Read_Protocol_Data_Unit",
             ApciEnum::AMemoryResponse => "A_Memory_Response_Protocol_Data_Unit",
             ApciEnum::AMemoryWrite => "A_Memory_Write_Protocol_Data_Unit",
@@ -222,10 +256,16 @@ impl ApciEnum {
             ApciEnum::AUserMemoryWrite => "A_UserMemory_Write_Protocol_Data_Unit",
             ApciEnum::AUserMemoryBitWrite => "A_UserMemoryBit_Write_Protocol_Data_Unit",
             ApciEnum::AUserManufacturerInfoRead => "A_UserManufacturerInfo_Read_Protocol_Data_Unit",
-            ApciEnum::AUserManufacturerInfoResponse => "A_UserManufacturerInfo_Response_Protocol_Data_Unit",
+            ApciEnum::AUserManufacturerInfoResponse => {
+                "A_UserManufacturerInfo_Response_Protocol_Data_Unit"
+            }
             ApciEnum::AFunctionPropertyCommand => "A_FunctionPropertyCommand_Protocol_Data_Unit",
-            ApciEnum::AFunctionPropertyStateRead => "A_FunctionPropertyState_Read_Protocol_Data_Unit",
-            ApciEnum::AFunctionPropertyStateResponse => "A_FunctionPropertyState_Response_Protocol_Data_Unit",
+            ApciEnum::AFunctionPropertyStateRead => {
+                "A_FunctionPropertyState_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::AFunctionPropertyStateResponse => {
+                "A_FunctionPropertyState_Response_Protocol_Data_Unit"
+            }
             ApciEnum::ReservedUserMsg => "Reserved_USERMSG",
             ApciEnum::ReservedUserMsg2 => "Reserved_USERMSG_2",
             ApciEnum::ReservedUserMsg3 => "Reserved_USERMSG_3",
@@ -252,17 +292,27 @@ impl ApciEnum {
             ApciEnum::APropertyValueResponse => "A_PropertyValue_Response_Protocol_Data_Unit",
             ApciEnum::APropertyValueWrite => "A_PropertyValue_Write_Protocol_Data_Unit",
             ApciEnum::APropertyDescriptionRead => "A_PropertyDescription_Read_Protocol_Data_Unit",
-            ApciEnum::APropertyDescriptionResponse => "A_PropertyDescription_Response_Protocol_Data_Unit",
+            ApciEnum::APropertyDescriptionResponse => {
+                "A_PropertyDescription_Response_Protocol_Data_Unit"
+            }
             ApciEnum::ANetworkParameterRead => "A_NetworkParameter_Read_Protocol_Data_Unit",
             ApciEnum::ANetworkParameterResponse => "A_NetworkParameter_Response_Protocol_Data_Unit",
-            ApciEnum::AIndividualAddressSerialNumberRead => "A_IndividualAddressSerialNumber_Read_Protocol_Data_Unit",
-            ApciEnum::AIndividualAddressSerialNumberResponse => "A_IndividualAddressSerialNumber_Response_Protocol_Data_Unit",
-            ApciEnum::AIndividualAddressSerialNumberWrite => "A_IndividualAddressSerialNumber_Write_Protocol_Data_Unit",
+            ApciEnum::AIndividualAddressSerialNumberRead => {
+                "A_IndividualAddressSerialNumber_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::AIndividualAddressSerialNumberResponse => {
+                "A_IndividualAddressSerialNumber_Response_Protocol_Data_Unit"
+            }
+            ApciEnum::AIndividualAddressSerialNumberWrite => {
+                "A_IndividualAddressSerialNumber_Write_Protocol_Data_Unit"
+            }
             ApciEnum::Reserved2 => "Reserved_2",
             ApciEnum::ADomainAddressWrite => "A_DomainAddress_Write_Protocol_Data_Unit",
             ApciEnum::ADomainAddressRead => "A_DomainAddress_Read_Protocol_Data_Unit",
             ApciEnum::ADomainAddressResponse => "A_DomainAddress_Response_Protocol_Data_Unit",
-            ApciEnum::ADomainAddressSelectiveRead => "A_DomainAddressSelective_Read_Protocol_Data_Unit",
+            ApciEnum::ADomainAddressSelectiveRead => {
+                "A_DomainAddressSelective_Read_Protocol_Data_Unit"
+            }
             ApciEnum::ANetworkParameterWrite => "A_NetworkParameter_Write_Protocol_Data_Unit",
             ApciEnum::ALinkRead => "A_Link_Read_Protocol_Data_Unit",
             ApciEnum::ALinkResponse => "A_Link_Response_Protocol_Data_Unit",
@@ -271,9 +321,15 @@ impl ApciEnum {
             ApciEnum::AGroupPropValueResponse => "A_GroupPropValue_Response_Protocol_Data_Unit",
             ApciEnum::AGroupPropValueWrite => "A_GroupPropValue_Write_Protocol_Data_Unit",
             ApciEnum::AGroupPropValueInfoReport => "A_GroupPropValue_InfoReport_Protocol_Data_Unit",
-            ApciEnum::ADomainAddressSerialNumberRead => "A_DomainAddressSerialNumber_Read_Protocol_Data_Unit",
-            ApciEnum::ADomainAddressSerialNumberResponse => "A_DomainAddressSerialNumber_Response_Protocol_Data_Unit",
-            ApciEnum::ADomainAddressSerialNumberWrite => "A_DomainAddressSerialNumber_Write_Protocol_Data_Unit",
+            ApciEnum::ADomainAddressSerialNumberRead => {
+                "A_DomainAddressSerialNumber_Read_Protocol_Data_Unit"
+            }
+            ApciEnum::ADomainAddressSerialNumberResponse => {
+                "A_DomainAddressSerialNumber_Response_Protocol_Data_Unit"
+            }
+            ApciEnum::ADomainAddressSerialNumberWrite => {
+                "A_DomainAddressSerialNumber_Write_Protocol_Data_Unit"
+            }
             ApciEnum::AFileStreamInfoReport => "A_FileStream_InfoReport_Protocol_Data_Unit",
         }
     }
@@ -286,7 +342,9 @@ pub struct Apci {
 
 impl Apci {
     pub fn new(apci: u16) -> Self {
-        Self { value: apci & 0x03FF }
+        Self {
+            value: apci & 0x03FF,
+        }
     }
 
     pub fn get_value(&self) -> u16 {

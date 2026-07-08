@@ -108,7 +108,9 @@ impl ExtendedControlField {
             },
             hop_count: self.get_hop_count(),
             extended_frame_format: match self.get_eff() {
-                ExtendedFrameFormat::PointToPointOrStandardGroupAddressed => "Point_To_Point_Or_Standard_Group_Addressed_L_Data_Extended_Frame",
+                ExtendedFrameFormat::PointToPointOrStandardGroupAddressed => {
+                    "Point_To_Point_Or_Standard_Group_Addressed_L_Data_Extended_Frame"
+                }
                 ExtendedFrameFormat::MulticastZoneAddressed11 => "Multicast_Zone_Addressed_11",
                 ExtendedFrameFormat::MulticastZoneAddressed01 => "Multicast_Zone_Addressed_01",
                 ExtendedFrameFormat::MulticastZoneAddressed10 => "Multicast_Zone_Addressed_10",

@@ -1,17 +1,17 @@
-use std::collections::HashMap;
-use tokio::sync::broadcast;
-use tokio::time::{Duration, Instant};
+use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::core::cemi::{Cemi, LData};
 use crate::core::control_field::ControlField;
-use crate::core::control_field_extended::{ExtendedControlField, AddressType};
+use crate::core::control_field_extended::{AddressType, ExtendedControlField};
+use crate::core::data::knx_data_decode::DptValue;
+use crate::core::data::knx_data_encode::KnxDataEncoder;
 use crate::core::layers::data::apdu::Apdu;
 use crate::core::layers::data::tpdu::Tpdu;
 use crate::core::layers::interfaces::apci::{Apci, ApciEnum};
 use crate::core::layers::interfaces::tpci::Tpci;
-use crate::core::data::knx_data_decode::DptValue;
-use crate::core::data::knx_data_encode::KnxDataEncoder;
-use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::errors::KnxError;
+use std::collections::HashMap;
+use tokio::sync::broadcast;
+use tokio::time::{Duration, Instant};
 
 const MAX_SIGNATURES_SIZE: usize = 10000;
 
@@ -36,9 +36,9 @@ pub struct DirectionFilter {
 }
 
 use crate::connection::server::{KnxNetIpServer, KnxNetIpServerOptions};
+use crate::connection::tpuart::{TpuartConnection, TpuartOptions};
 use crate::connection::tunneling::{KnxTunneling, TunnelingOptions};
 use crate::connection::usb::{KnxUsbConnection, KnxUsbOptions};
-use crate::connection::tpuart::{TpuartConnection, TpuartOptions};
 
 /// Configuration options for the Router.
 #[derive(Debug, Clone)]
@@ -164,7 +164,10 @@ impl Router {
             if router.use_single_ia {
                 server_opts.individual_address = router.individual_address.clone();
             }
-            let key = format!("IP KNXnet/IP Server: {}:{}", server_opts.local_ip, server_opts.port);
+            let key = format!(
+                "IP KNXnet/IP Server: {}:{}",
+                server_opts.local_ip, server_opts.port
+            );
             let server = KnxNetIpServer::new(server_opts);
             router.add_link(key, KnxLink::Server(server));
         }
@@ -262,22 +265,32 @@ impl Router {
                 self.recent_destinations.remove(&oldest_key);
             }
         }
-        self.recent_destinations.insert(dest.clone(), Instant::now());
+        self.recent_destinations
+            .insert(dest.clone(), Instant::now());
 
         // 4. Route
-        self.route(cemi, source_key, &dest, is_group, hop_count).await;
+        self.route(cemi, source_key, &dest, is_group, hop_count)
+            .await;
     }
 
     fn learn_address(&mut self, src: &str, source_key: &str) {
         // knxd pattern: don't learn 0.0.0 or special 15.15.255 (0xFFFF) addresses
         if src != "0.0.0" && src != "15.15.255" && !src.is_empty() {
             if self.address_table.get(src).map(|k| k.as_str()) != Some(source_key) {
-                self.address_table.insert(src.to_string(), source_key.to_string());
+                self.address_table
+                    .insert(src.to_string(), source_key.to_string());
             }
         }
     }
 
-    async fn route(&self, cemi: &Cemi, source_key: &str, dest: &str, is_group: bool, hop_count: u8) {
+    async fn route(
+        &self,
+        cemi: &Cemi,
+        source_key: &str,
+        dest: &str,
+        is_group: bool,
+        hop_count: u8,
+    ) {
         // Hop Count Management (Protect the whole network)
         if self.handle_hop_count && hop_count == 0 {
             return; // Drop packet
@@ -293,7 +306,9 @@ impl Router {
                         let _ = target_link.send(cemi).await;
                     }
                 }
-                let _ = self.indication_tx.send((source_key.to_string(), cemi.clone()));
+                let _ = self
+                    .indication_tx
+                    .send((source_key.to_string(), cemi.clone()));
                 return; // Do not flood
             }
             // If target is unknown, knxd broadcasts it to all interfaces
@@ -307,9 +322,9 @@ impl Router {
 
             // Avoid looping back to the physical source address if known via another route
             if let Some(known_src_key) = self.address_table.get(dest) {
-               if known_src_key == key {
-                   continue;
-               }
+                if known_src_key == key {
+                    continue;
+                }
             }
 
             // Check if the link should filter this message
@@ -318,7 +333,9 @@ impl Router {
                 continue;
             }
 
-            let _ = self.indication_tx.send((source_key.to_string(), cemi.clone()));
+            let _ = self
+                .indication_tx
+                .send((source_key.to_string(), cemi.clone()));
             let _ = link.send(cemi).await;
         }
     }
@@ -331,7 +348,12 @@ impl Router {
         }
     }
 
-    fn evaluate_direction_filter(&self, filter: &DirectionFilter, dest: &str, is_group: bool) -> bool {
+    fn evaluate_direction_filter(
+        &self,
+        filter: &DirectionFilter,
+        dest: &str,
+        is_group: bool,
+    ) -> bool {
         let addr_filter = if is_group {
             &filter.group_address
         } else {
@@ -350,7 +372,8 @@ impl Router {
     /// Periodically clean the destination cache (knxd pattern: 1-second TTL).
     pub fn gc_destinations(&mut self) {
         let now = Instant::now();
-        self.recent_destinations.retain(|_, time| now.duration_since(*time) < Duration::from_secs(1));
+        self.recent_destinations
+            .retain(|_, time| now.duration_since(*time) < Duration::from_secs(1));
     }
 
     /// Broadcast a CEMI to all registered links.
@@ -377,7 +400,12 @@ impl Router {
     }
 
     /// Send a GroupValue_Write telegram to all links.
-    pub async fn write(&self, destination: &str, dpt: &str, value: &DptValue) -> Result<(), KnxError> {
+    pub async fn write(
+        &self,
+        destination: &str,
+        dpt: &str,
+        value: &DptValue,
+    ) -> Result<(), KnxError> {
         let data = KnxDataEncoder::encode_this(dpt, value)?;
         let is_short = KnxDataEncoder::is_short_dpt(dpt);
 
@@ -460,9 +488,14 @@ fn extract_cemi_metadata(cemi: &Cemi) -> (String, String, u8, bool, bool, u8) {
             let hop_count = ld.control_field2.get_hop_count();
             (src, dest, msg_code, is_repeated, is_group, hop_count)
         }
-        _ => {
-            (String::new(), String::new(), cemi.get_message_code(), false, false, 7)
-        }
+        _ => (
+            String::new(),
+            String::new(),
+            cemi.get_message_code(),
+            false,
+            false,
+            7,
+        ),
     }
 }
 
@@ -487,8 +520,14 @@ mod tests {
         bridge.learn_address("1.1.1", "TPUART");
         bridge.learn_address("1.1.2", "IP Tunneling: 192.168.1.1:3671");
 
-        assert_eq!(bridge.address_table.get("1.1.1"), Some(&"TPUART".to_string()));
-        assert_eq!(bridge.address_table.get("1.1.2"), Some(&"IP Tunneling: 192.168.1.1:3671".to_string()));
+        assert_eq!(
+            bridge.address_table.get("1.1.1"),
+            Some(&"TPUART".to_string())
+        );
+        assert_eq!(
+            bridge.address_table.get("1.1.2"),
+            Some(&"IP Tunneling: 192.168.1.1:3671".to_string())
+        );
 
         // Special addresses should not be learned
         bridge.learn_address("0.0.0", "TPUART");
@@ -512,8 +551,12 @@ mod tests {
         };
         let mut bridge = Router::new(options);
 
-        bridge.recent_destinations.insert("1/1/1".to_string(), Instant::now() - Duration::from_secs(2));
-        bridge.recent_destinations.insert("1/1/2".to_string(), Instant::now());
+        bridge
+            .recent_destinations
+            .insert("1/1/1".to_string(), Instant::now() - Duration::from_secs(2));
+        bridge
+            .recent_destinations
+            .insert("1/1/2".to_string(), Instant::now());
 
         bridge.gc_destinations();
 

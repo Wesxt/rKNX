@@ -21,7 +21,12 @@ pub struct Npdu {
 }
 
 impl Npdu {
-    pub fn new(tpdu: Tpdu, address_type: AddressType, hop_count: u8, length: u8) -> Result<Self, KnxError> {
+    pub fn new(
+        tpdu: Tpdu,
+        address_type: AddressType,
+        hop_count: u8,
+        length: u8,
+    ) -> Result<Self, KnxError> {
         if hop_count > 7 {
             return Err(KnxError::InvalidParametersForDpt);
         }

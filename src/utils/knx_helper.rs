@@ -44,7 +44,7 @@ impl KnxHelper {
         let mut addr = [0u8; 2];
         let mut three_level_addressing = true;
         let group = address.contains('/');
-        
+
         let parts: Vec<&str> = if !group {
             address.split('.').collect()
         } else {
@@ -65,12 +65,16 @@ impl KnxHelper {
         }
 
         if !three_level_addressing {
-            let mut part = parts[0].parse::<u32>().map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
+            let mut part = parts[0]
+                .parse::<u32>()
+                .map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
             if part > 15 {
                 return Err(KnxError::InvalidKnxAddressException(address.to_string()));
             }
             addr[0] = ((part << 3) & 255) as u8;
-            part = parts[1].parse::<u32>().map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
+            part = parts[1]
+                .parse::<u32>()
+                .map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
             if part > 2047 {
                 return Err(KnxError::InvalidKnxAddressException(address.to_string()));
             }
@@ -79,17 +83,27 @@ impl KnxHelper {
             addr[0] = ((addr[0] as u32 | part2[0] as u32) & 255) as u8;
             addr[1] = part2[1];
         } else {
-            let mut part = parts[0].parse::<u32>().map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
+            let mut part = parts[0]
+                .parse::<u32>()
+                .map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
             if part > 31 {
                 return Err(KnxError::InvalidKnxAddressException(address.to_string()));
             }
-            addr[0] = (if group { (part << 3) & 255 } else { (part << 4) & 255 }) as u8;
-            part = parts[1].parse::<u32>().map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
+            addr[0] = (if group {
+                (part << 3) & 255
+            } else {
+                (part << 4) & 255
+            }) as u8;
+            part = parts[1]
+                .parse::<u32>()
+                .map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
             if (group && part > 7) || (!group && part > 15) {
                 return Err(KnxError::InvalidKnxAddressException(address.to_string()));
             }
             addr[0] = ((addr[0] as u32 | part) & 255) as u8;
-            part = parts[2].parse::<u32>().map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
+            part = parts[2]
+                .parse::<u32>()
+                .map_err(|_| KnxError::InvalidKnxAddressException(address.to_string()))?;
             if part > 255 {
                 return Err(KnxError::InvalidKnxAddressException(address.to_string()));
             }
@@ -168,7 +182,7 @@ impl KnxHelper {
                 Err(_) => {
                     return Err(KnxError::InvalidKnxAddressException(
                         "Invalid address. Incorrect format.".to_string(),
-                    ))
+                    ));
                 }
             }
         }
@@ -285,4 +299,3 @@ impl KnxHelper {
         buffer.len() == 2
     }
 }
-

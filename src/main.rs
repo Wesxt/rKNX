@@ -137,20 +137,27 @@ async fn main() {
     // Expose WebSocket and MQTT APIs if configured
     let mut api_manager = None;
     if let Some(ref api_cfg) = config.api {
-        let db_path = api_cfg.db_path.clone().unwrap_or_else(|| "rknx_cache.db".to_string());
+        let db_path = api_cfg
+            .db_path
+            .clone()
+            .unwrap_or_else(|| "rknx_cache.db".to_string());
         match rknx::api::db::DbManager::new(&db_path) {
             Ok(db) => {
                 let manager = rknx::api::manager::ApiManager::new(db);
-                
+
                 // WebSocket Server
                 let ws_port = api_cfg.ws_port.unwrap_or(8080);
-                let ws_server = rknx::api::websocket::WebSocketServer::new(Arc::clone(&manager), ws_port);
+                let ws_server =
+                    rknx::api::websocket::WebSocketServer::new(Arc::clone(&manager), ws_port);
                 Arc::new(ws_server).start();
 
                 // MQTT Client Adapter
                 if let Some(ref mqtt_host) = api_cfg.mqtt_host {
                     let mqtt_port = api_cfg.mqtt_port.unwrap_or(1883);
-                    let mqtt_client_id = api_cfg.mqtt_client_id.clone().unwrap_or_else(|| "rknx_daemon".to_string());
+                    let mqtt_client_id = api_cfg
+                        .mqtt_client_id
+                        .clone()
+                        .unwrap_or_else(|| "rknx_daemon".to_string());
                     let mqtt_adapter = rknx::api::mqtt::MqttAdapter::new(
                         Arc::clone(&manager),
                         mqtt_host.clone(),

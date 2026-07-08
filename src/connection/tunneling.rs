@@ -1,21 +1,23 @@
-use std::sync::Arc;
-use std::net::{Ipv4Addr, SocketAddr};
-use std::str::FromStr;
-use std::time::Duration;
-use tokio::net::{UdpSocket, TcpStream};
-use tokio::sync::{broadcast, mpsc, oneshot};
-use std::sync::RwLock;
-use tokio::time::Instant;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use super::KnxService;
+use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::core::cemi::Cemi;
+use crate::core::knxnetip_enum::{
+    ConnectionType, HostProtocolCode, KnxNetIpErrorCodes, KnxNetIpServiceType,
+};
 use crate::core::knxnetip_header::KnxNetIpHeader;
-use crate::core::knxnetip_enum::{KnxNetIpServiceType, HostProtocolCode, ConnectionType, KnxNetIpErrorCodes};
-use crate::core::knxnetip_structures::{Hpai, Cri, Crd};
+use crate::core::knxnetip_structures::{Crd, Cri, Hpai};
 use crate::errors::KnxError;
 use crate::utils::knx_helper::KnxHelper;
-use crate::core::cache::group_address_cache::GroupAddressCache;
-use super::KnxService;
 use crate::utils::logger::Logger;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::RwLock;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpStream, UdpSocket};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::time::Instant;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportProtocol {
     Udp,
@@ -104,7 +106,10 @@ impl KnxTunneling {
 // Internal connection handle to abstract UDP vs TCP operations
 enum SocketType {
     Udp(Arc<UdpSocket>),
-    Tcp(tokio::io::ReadHalf<TcpStream>, tokio::io::WriteHalf<TcpStream>),
+    Tcp(
+        tokio::io::ReadHalf<TcpStream>,
+        tokio::io::WriteHalf<TcpStream>,
+    ),
 }
 
 impl KnxService for KnxTunneling {
@@ -120,7 +125,7 @@ impl KnxService for KnxTunneling {
 
         let (conn_done_tx, conn_done_rx) = oneshot::channel();
         let (actor_tx, mut actor_rx) = mpsc::channel(self.options.max_queue_size);
-        
+
         // Save actor sender
         {
             let mut guard = self.actor_tx.lock().await;
@@ -138,7 +143,8 @@ impl KnxService for KnxTunneling {
             let mut s = state.write().unwrap();
             let old = *s;
             *s = TunnelState::Connecting;
-            logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+            logger
+                .info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
         }
 
         // Spawn background task
@@ -148,10 +154,11 @@ impl KnxService for KnxTunneling {
 
             loop {
                 let host_addr = format!("{}:{}", options.ip, options.port);
-                
+
                 // Connect socket
                 let socket_res = if options.transport == TransportProtocol::Tcp {
-                    TcpStream::connect(&host_addr).await
+                    TcpStream::connect(&host_addr)
+                        .await
                         .map_err(|e| KnxError::Io(e.to_string()))
                         .map(|s| {
                             let (rh, wh) = tokio::io::split(s);
@@ -163,7 +170,8 @@ impl KnxService for KnxTunneling {
                         options.local_ip.as_deref().unwrap_or("0.0.0.0"),
                         options.local_port
                     );
-                    UdpSocket::bind(&local).await
+                    UdpSocket::bind(&local)
+                        .await
                         .map_err(|e| KnxError::Io(e.to_string()))
                         .map(|s| SocketType::Udp(Arc::new(s)))
                 };
@@ -177,14 +185,21 @@ impl KnxService for KnxTunneling {
                         }
                         if options.auto_reconnect && attempts < options.max_reconnect_attempts {
                             attempts += 1;
-                            logger.info(&format!("Reconnecting attempt {}/{}...", attempts, options.max_reconnect_attempts));
+                            logger.info(&format!(
+                                "Reconnecting attempt {}/{}...",
+                                attempts, options.max_reconnect_attempts
+                            ));
                             {
                                 let mut s = state.write().unwrap();
                                 let old = *s;
                                 *s = TunnelState::Reconnecting;
-                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                                logger.info(
+                                    &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                        .to_uppercase(),
+                                );
                             }
-                            tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms)).await;
+                            tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms))
+                                .await;
                             continue;
                         } else {
                             logger.error("Connection failed. Maximum attempts reached or auto-reconnect disabled.");
@@ -192,7 +207,10 @@ impl KnxService for KnxTunneling {
                                 let mut s = state.write().unwrap();
                                 let old = *s;
                                 *s = TunnelState::Faulted;
-                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                                logger.info(
+                                    &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                        .to_uppercase(),
+                                );
                             }
                             break;
                         }
@@ -200,30 +218,55 @@ impl KnxService for KnxTunneling {
                 };
 
                 // Prepare connect request
-                let local_ip_parsed = Ipv4Addr::from_str(options.local_ip.as_deref().unwrap_or("0.0.0.0")).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
+                let local_ip_parsed =
+                    Ipv4Addr::from_str(options.local_ip.as_deref().unwrap_or("0.0.0.0"))
+                        .unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
                 let local_port_val = match &socket {
                     SocketType::Udp(s) => s.local_addr().map(|a| a.port()).unwrap_or(0),
                     SocketType::Tcp(_, _) => 0, // TCP port assigned dynamically
                 };
 
                 let hpai = Hpai::new(
-                    if options.transport == TransportProtocol::Tcp { HostProtocolCode::Ipv4Tcp } else { HostProtocolCode::Ipv4Udp },
-                    if options.use_route_back { Ipv4Addr::new(0, 0, 0, 0) } else { local_ip_parsed },
-                    if options.use_route_back { 0 } else { local_port_val },
+                    if options.transport == TransportProtocol::Tcp {
+                        HostProtocolCode::Ipv4Tcp
+                    } else {
+                        HostProtocolCode::Ipv4Udp
+                    },
+                    if options.use_route_back {
+                        Ipv4Addr::new(0, 0, 0, 0)
+                    } else {
+                        local_ip_parsed
+                    },
+                    if options.use_route_back {
+                        0
+                    } else {
+                        local_port_val
+                    },
                 );
-                let cri = Cri::new(options.connection_type, crate::core::knxnetip_enum::KnxLayer::LinkLayer as u8, None);
+                let cri = Cri::new(
+                    options.connection_type,
+                    crate::core::knxnetip_enum::KnxLayer::LinkLayer as u8,
+                    None,
+                );
 
                 let mut body = hpai.to_buffer();
                 body.extend_from_slice(&hpai.to_buffer());
                 body.extend_from_slice(&cri.to_buffer());
 
-                let header = KnxNetIpHeader::new(KnxNetIpServiceType::ConnectRequest, (6 + body.len()) as u16);
+                let header = KnxNetIpHeader::new(
+                    KnxNetIpServiceType::ConnectRequest,
+                    (6 + body.len()) as u16,
+                );
                 let mut packet = header.to_buffer();
                 packet.extend_from_slice(&body);
 
                 // Send request
                 let send_res = match &mut socket {
-                    SocketType::Udp(s) => s.send_to(&packet, &host_addr).await.map(|_| ()).map_err(|_| ()),
+                    SocketType::Udp(s) => s
+                        .send_to(&packet, &host_addr)
+                        .await
+                        .map(|_| ())
+                        .map_err(|_| ()),
                     SocketType::Tcp(_, wh) => wh.write_all(&packet).await.map_err(|_| ()),
                 };
 
@@ -231,12 +274,18 @@ impl KnxService for KnxTunneling {
                     logger.error("Failed to send ConnectRequest packet.");
                     if options.auto_reconnect && attempts < options.max_reconnect_attempts {
                         attempts += 1;
-                        logger.info(&format!("Reconnecting attempt {}/{}...", attempts, options.max_reconnect_attempts));
+                        logger.info(&format!(
+                            "Reconnecting attempt {}/{}...",
+                            attempts, options.max_reconnect_attempts
+                        ));
                         {
                             let mut s = state.write().unwrap();
                             let old = *s;
                             *s = TunnelState::Reconnecting;
-                            logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                            logger.info(
+                                &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                    .to_uppercase(),
+                            );
                         }
                         tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms)).await;
                         continue;
@@ -246,7 +295,10 @@ impl KnxService for KnxTunneling {
                             let mut s = state.write().unwrap();
                             let old = *s;
                             *s = TunnelState::Faulted;
-                            logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                            logger.info(
+                                &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                    .to_uppercase(),
+                            );
                         }
                         break;
                     }
@@ -256,14 +308,24 @@ impl KnxService for KnxTunneling {
                 let mut response_buffer = vec![0u8; 1024];
                 let response_res = match &mut socket {
                     SocketType::Udp(s) => {
-                        match tokio::time::timeout(Duration::from_secs(6), s.recv_from(&mut response_buffer)).await {
+                        match tokio::time::timeout(
+                            Duration::from_secs(6),
+                            s.recv_from(&mut response_buffer),
+                        )
+                        .await
+                        {
                             Ok(Ok((len, _))) => Ok(len),
                             Ok(Err(io_err)) => Err(KnxError::from(io_err)),
                             Err(_) => Err(KnxError::Timeout),
                         }
                     }
                     SocketType::Tcp(rh, _) => {
-                        match tokio::time::timeout(Duration::from_secs(6), rh.read(&mut response_buffer)).await {
+                        match tokio::time::timeout(
+                            Duration::from_secs(6),
+                            rh.read(&mut response_buffer),
+                        )
+                        .await
+                        {
                             Ok(Ok(0)) => Err(KnxError::ConnectionClosed),
                             Ok(Ok(len)) => Ok(len),
                             Ok(Err(io_err)) => Err(KnxError::from(io_err)),
@@ -281,14 +343,21 @@ impl KnxService for KnxTunneling {
                         }
                         if options.auto_reconnect && attempts < options.max_reconnect_attempts {
                             attempts += 1;
-                            logger.info(&format!("Reconnecting attempt {}/{}...", attempts, options.max_reconnect_attempts));
+                            logger.info(&format!(
+                                "Reconnecting attempt {}/{}...",
+                                attempts, options.max_reconnect_attempts
+                            ));
                             {
                                 let mut s = state.write().unwrap();
                                 let old = *s;
                                 *s = TunnelState::Reconnecting;
-                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                                logger.info(
+                                    &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                        .to_uppercase(),
+                                );
                             }
-                            tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms)).await;
+                            tokio::time::sleep(Duration::from_millis(options.reconnect_delay_ms))
+                                .await;
                             continue;
                         } else {
                             logger.error("Connection failed. Maximum attempts reached or auto-reconnect disabled.");
@@ -296,7 +365,10 @@ impl KnxService for KnxTunneling {
                                 let mut s = state.write().unwrap();
                                 let old = *s;
                                 *s = TunnelState::Faulted;
-                                logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+                                logger.info(
+                                    &format!("FSM: State transition from {:?} to {:?}", old, *s)
+                                        .to_uppercase(),
+                                );
                             }
                             break;
                         }
@@ -324,8 +396,9 @@ impl KnxService for KnxTunneling {
                                 ia_str = KnxHelper::get_address_to_string(
                                     &[(crd.knx_address >> 8) as u8, (crd.knx_address & 0xFF) as u8],
                                     ".",
-                                    false
-                                ).unwrap_or_else(|_| "1.0.1".to_string());
+                                    false,
+                                )
+                                .unwrap_or_else(|_| "1.0.1".to_string());
                             }
                         }
 
@@ -339,7 +412,9 @@ impl KnxService for KnxTunneling {
                             *s = TunnelState::Connected;
                         }
                         logger.info("Connected to KNXnet/IP Gateway successfully.");
-                        let _ = event_tx_actor.send(TunnelingEvent::Connected { channel_id: channel });
+                        let _ = event_tx_actor.send(TunnelingEvent::Connected {
+                            channel_id: channel,
+                        });
                         if let Some(tx) = conn_done_tx.take() {
                             let _ = tx.send(Ok(()));
                         }
@@ -354,7 +429,8 @@ impl KnxService for KnxTunneling {
                             SocketType::Tcp(rh, wh) => (None, Some(rh), Some(wh)),
                         };
 
-                        let (incoming_packet_tx, mut incoming_packet_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100);
+                        let (incoming_packet_tx, mut incoming_packet_rx) =
+                            mpsc::channel::<(Vec<u8>, SocketAddr)>(100);
 
                         // Spawn reader task
                         let reader_tx = incoming_packet_tx.clone();
@@ -364,7 +440,11 @@ impl KnxService for KnxTunneling {
                                 loop {
                                     match s.recv_from(&mut buf).await {
                                         Ok((len, addr)) => {
-                                            if reader_tx.send((buf[..len].to_vec(), addr)).await.is_err() {
+                                            if reader_tx
+                                                .send((buf[..len].to_vec(), addr))
+                                                .await
+                                                .is_err()
+                                            {
                                                 break;
                                             }
                                         }
@@ -382,11 +462,16 @@ impl KnxService for KnxTunneling {
                                         Ok(n) => {
                                             tcp_buf.extend_from_slice(&buf[..n]);
                                             while tcp_buf.len() >= 6 {
-                                                let total_len = ((tcp_buf[4] as usize) << 8) | (tcp_buf[5] as usize);
+                                                let total_len = ((tcp_buf[4] as usize) << 8)
+                                                    | (tcp_buf[5] as usize);
                                                 if tcp_buf.len() >= total_len {
                                                     let pkt = tcp_buf[..total_len].to_vec();
                                                     tcp_buf.drain(..total_len);
-                                                    if reader_tx.send((pkt, "0.0.0.0:0".parse().unwrap())).await.is_err() {
+                                                    if reader_tx
+                                                        .send((pkt, "0.0.0.0:0".parse().unwrap()))
+                                                        .await
+                                                        .is_err()
+                                                    {
                                                         break;
                                                     }
                                                 } else {
@@ -404,7 +489,10 @@ impl KnxService for KnxTunneling {
                         macro_rules! send_raw {
                             ($pkt:expr) => {
                                 if let Some(ref s) = udp_socket {
-                                    s.send_to($pkt, &host_addr).await.map(|_| ()).map_err(|_| ())
+                                    s.send_to($pkt, &host_addr)
+                                        .await
+                                        .map(|_| ())
+                                        .map_err(|_| ())
                                 } else if let Some(ref mut wh) = tcp_wh {
                                     wh.write_all($pkt).await.map_err(|_| ())
                                 } else {
@@ -416,7 +504,11 @@ impl KnxService for KnxTunneling {
                         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(60));
                         heartbeat_interval.tick().await; // Initial tick completes immediately
 
-                        let mut active_send: Option<(oneshot::Sender<Result<(), KnxError>>, Instant, usize)> = None;
+                        let mut active_send: Option<(
+                            oneshot::Sender<Result<(), KnxError>>,
+                            Instant,
+                            usize,
+                        )> = None;
                         let mut last_sent_packet = Vec::new();
 
                         let mut heartbeat_pending = false;
@@ -486,7 +578,7 @@ impl KnxService for KnxTunneling {
                                         Err(_) => continue,
                                     };
                                     let body = &pkt[KnxNetIpHeader::HEADER_SIZE_10 as usize..];
- 
+
                                     match header.service_type {
                                         KnxNetIpServiceType::TunnellingAck | KnxNetIpServiceType::DeviceConfigurationAck => {
                                             if body.len() >= 4 && body[1] == channel_id && body[2] == seq_num {
@@ -638,7 +730,9 @@ impl KnxService for KnxTunneling {
             let _ = event_tx_actor.send(TunnelingEvent::Disconnected);
         });
 
-        conn_done_rx.await.map_err(|_| KnxError::Protocol("Connection task closed unexpectedly".to_string()))?
+        conn_done_rx
+            .await
+            .map_err(|_| KnxError::Protocol("Connection task closed unexpectedly".to_string()))?
     }
 
     async fn disconnect(&self) -> Result<(), KnxError> {
@@ -650,7 +744,8 @@ impl KnxService for KnxTunneling {
             let mut s = self.state.write().unwrap();
             let old = *s;
             *s = TunnelState::Disconnected;
-            self.logger.info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
+            self.logger
+                .info(&format!("FSM: State transition from {:?} to {:?}", old, *s).to_uppercase());
         }
         let _ = self.event_tx.send(TunnelingEvent::Disconnected);
         Ok(())
@@ -658,7 +753,9 @@ impl KnxService for KnxTunneling {
 
     async fn send(&self, cemi: &Cemi) -> Result<(), KnxError> {
         if *self.state.read().unwrap() != TunnelState::Connected {
-            return Err(KnxError::Protocol("Tunnel client is not connected".to_string()));
+            return Err(KnxError::Protocol(
+                "Tunnel client is not connected".to_string(),
+            ));
         }
 
         // Process cache
@@ -672,7 +769,8 @@ impl KnxService for KnxTunneling {
         let guard = self.actor_tx.lock().await;
         if let Some(tx) = &*guard {
             let (reply_tx, reply_rx) = oneshot::channel();
-            tx.send(ActorMessage::SendCemi(cemi.clone(), reply_tx)).await
+            tx.send(ActorMessage::SendCemi(cemi.clone(), reply_tx))
+                .await
                 .map_err(|_| KnxError::ConnectionClosed)?;
             reply_rx.await.map_err(|_| KnxError::ConnectionClosed)?
         } else {

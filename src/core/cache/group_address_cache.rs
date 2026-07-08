@@ -1,9 +1,9 @@
-use std::collections::{HashMap, VecDeque};
-use std::sync::{OnceLock, RwLock};
-use std::time::SystemTime;
 use crate::core::cemi::Cemi;
 use crate::core::data::knx_data_decode::{DptValue, KnxDataDecode};
 use crate::core::layers::interfaces::apci::ApciEnum;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{OnceLock, RwLock};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
@@ -80,7 +80,9 @@ impl GroupAddressCache {
             _ => return,
         };
 
-        if ldata.control_field2.get_address_type() != crate::core::control_field_extended::AddressType::Group {
+        if ldata.control_field2.get_address_type()
+            != crate::core::control_field_extended::AddressType::Group
+        {
             return;
         }
 
@@ -157,9 +159,9 @@ impl GroupAddressCache {
             }
 
             if let Some(start_time) = start_date {
-                let mut valid_entries = entries.iter().filter(|e| {
-                    e.timestamp >= start_time && e.timestamp <= end_time
-                });
+                let mut valid_entries = entries
+                    .iter()
+                    .filter(|e| e.timestamp >= start_time && e.timestamp <= end_time);
                 if return_only_latest {
                     if let Some(latest) = valid_entries.next() {
                         results.push(latest.clone());

@@ -1,23 +1,23 @@
+use crate::api::db::DbManager;
 use crate::connection::KnxService;
+use crate::connection::router::Router;
 use crate::connection::server::KnxNetIpServer;
+use crate::connection::tpuart::{TpuartConnection, TpuartOptions};
 use crate::connection::tunneling::KnxTunneling;
 use crate::connection::usb::{KnxUsbConnection, KnxUsbOptions};
-use crate::connection::tpuart::{TpuartConnection, TpuartOptions};
-use crate::connection::router::Router;
 use crate::core::cache::group_address_cache::GroupAddressCache;
 use crate::core::cemi::Cemi;
 use crate::core::data::knx_data_decode::{
-    DptValue, KnxDataDecode, Dpt2Value, Dpt3Value, Dpt6020Value,
-    Dpt10Value, Dpt11Value, Dpt232Value, Dpt251Val, Dpt251Value,
+    Dpt2Value, Dpt3Value, Dpt10Value, Dpt11Value, Dpt232Value, Dpt251Val, Dpt251Value,
+    Dpt6020Value, DptValue, KnxDataDecode,
 };
 use crate::errors::KnxError;
-use crate::api::db::DbManager;
 use crate::utils::logger::Logger;
 
-use std::sync::{Arc, RwLock};
-use std::collections::HashSet;
-use std::time::UNIX_EPOCH;
 use serde_json::Value;
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
+use std::time::UNIX_EPOCH;
 
 #[derive(Clone)]
 pub enum ActiveConnection {
@@ -82,16 +82,25 @@ impl ActiveConnection {
         }
     }
 
-    pub async fn write(&self, destination: &str, dpt: &str, value: &DptValue) -> Result<(), KnxError> {
+    pub async fn write(
+        &self,
+        destination: &str,
+        dpt: &str,
+        value: &DptValue,
+    ) -> Result<(), KnxError> {
         match self {
             ActiveConnection::Router(r) => {
                 // Router write wrapper
-                let data = crate::core::data::knx_data_encode::KnxDataEncoder::encode_this(dpt, value)?;
-                let is_short = crate::core::data::knx_data_encode::KnxDataEncoder::is_short_dpt(dpt);
+                let data =
+                    crate::core::data::knx_data_encode::KnxDataEncoder::encode_this(dpt, value)?;
+                let is_short =
+                    crate::core::data::knx_data_encode::KnxDataEncoder::is_short_dpt(dpt);
                 let cf1 = crate::core::control_field::ControlField::new(0xBC);
                 let cf2 = crate::core::control_field_extended::ExtendedControlField::new(0xE0);
                 let tpci = crate::core::layers::interfaces::tpci::Tpci::new(0x00);
-                let apci = crate::core::layers::interfaces::apci::Apci::new(crate::core::layers::interfaces::apci::ApciEnum::AGroupValueWrite as u16);
+                let apci = crate::core::layers::interfaces::apci::Apci::new(
+                    crate::core::layers::interfaces::apci::ApciEnum::AGroupValueWrite as u16,
+                );
                 let tpdu = crate::core::layers::data::tpdu::Tpdu {
                     tpci: tpci.clone(),
                     apdu: crate::core::layers::data::apdu::Apdu {
@@ -126,7 +135,9 @@ impl ActiveConnection {
                 let cf1 = crate::core::control_field::ControlField::new(0xBC);
                 let cf2 = crate::core::control_field_extended::ExtendedControlField::new(0xE0);
                 let tpci = crate::core::layers::interfaces::tpci::Tpci::new(0x00);
-                let apci = crate::core::layers::interfaces::apci::Apci::new(crate::core::layers::interfaces::apci::ApciEnum::AGroupValueRead as u16);
+                let apci = crate::core::layers::interfaces::apci::Apci::new(
+                    crate::core::layers::interfaces::apci::ApciEnum::AGroupValueRead as u16,
+                );
                 let tpdu = crate::core::layers::data::tpdu::Tpdu {
                     tpci: tpci.clone(),
                     apdu: crate::core::layers::data::apdu::Apdu {
@@ -166,7 +177,7 @@ pub struct ApiManager {
 impl ApiManager {
     pub fn new(db: DbManager) -> Arc<Self> {
         let (event_broadcaster, _) = tokio::sync::broadcast::channel(500);
-        
+
         let manager = Arc::new(Self {
             db,
             active_connection: Arc::new(RwLock::new(None)),
@@ -227,7 +238,10 @@ impl ApiManager {
         let broadcaster = self.event_broadcaster.clone();
 
         // Subscribe to GroupAddressCache updates
-        let mut cache_rx = GroupAddressCache::get_instance().read().unwrap().subscribe();
+        let mut cache_rx = GroupAddressCache::get_instance()
+            .read()
+            .unwrap()
+            .subscribe();
 
         tokio::spawn(async move {
             loop {
@@ -289,7 +303,8 @@ impl ApiManager {
     async fn connect_internal(&self, conn_type: &str, opts: Value) -> Result<(), KnxError> {
         let connection = match conn_type {
             "Router" => {
-                let r_opts: crate::config::RouterConfig = serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let r_opts: crate::config::RouterConfig =
+                    serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
                 let config = crate::config::Config {
                     server: None,
                     client: None,
@@ -297,12 +312,15 @@ impl ApiManager {
                     logging: None,
                     api: None,
                 };
-                let router_opts = config.to_router_options().ok_or(KnxError::InvalidParametersForDpt)?;
+                let router_opts = config
+                    .to_router_options()
+                    .ok_or(KnxError::InvalidParametersForDpt)?;
                 let router = Arc::new(Router::new(router_opts));
                 ActiveConnection::Router(router)
             }
             "Server" => {
-                let s_opts: crate::config::ServerConfig = serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let s_opts: crate::config::ServerConfig =
+                    serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
                 let config = crate::config::Config {
                     server: Some(s_opts),
                     client: None,
@@ -310,12 +328,15 @@ impl ApiManager {
                     logging: None,
                     api: None,
                 };
-                let server_opts = config.to_server_options().ok_or(KnxError::InvalidParametersForDpt)?;
+                let server_opts = config
+                    .to_server_options()
+                    .ok_or(KnxError::InvalidParametersForDpt)?;
                 let server = Arc::new(KnxNetIpServer::new(server_opts));
                 ActiveConnection::Server(server)
             }
             "Tunneling" => {
-                let c_opts: crate::config::ClientConfig = serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let c_opts: crate::config::ClientConfig =
+                    serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
                 let config = crate::config::Config {
                     server: None,
                     client: Some(c_opts),
@@ -323,13 +344,19 @@ impl ApiManager {
                     logging: None,
                     api: None,
                 };
-                let tunneling_opts = config.to_tunneling_options().ok_or(KnxError::InvalidParametersForDpt)?;
+                let tunneling_opts = config
+                    .to_tunneling_options()
+                    .ok_or(KnxError::InvalidParametersForDpt)?;
                 let tunneling = Arc::new(KnxTunneling::new(tunneling_opts));
                 ActiveConnection::Tunneling(tunneling)
             }
             "Usb" => {
-                let u_opts: crate::config::UsbConfig = serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
-                let individual_address = u_opts.individual_address.clone().unwrap_or_else(|| "1.1.0".to_string());
+                let u_opts: crate::config::UsbConfig =
+                    serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let individual_address = u_opts
+                    .individual_address
+                    .clone()
+                    .unwrap_or_else(|| "1.1.0".to_string());
                 let usb_opts = KnxUsbOptions {
                     path: u_opts.path,
                     vendor_id: u_opts.vendor_id,
@@ -340,8 +367,12 @@ impl ApiManager {
                 ActiveConnection::Usb(usb)
             }
             "Tpuart" => {
-                let t_opts: crate::config::TpuartConfig = serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
-                let individual_address = t_opts.individual_address.clone().unwrap_or_else(|| "1.1.0".to_string());
+                let t_opts: crate::config::TpuartConfig =
+                    serde_json::from_value(opts).map_err(|_| KnxError::InvalidParametersForDpt)?;
+                let individual_address = t_opts
+                    .individual_address
+                    .clone()
+                    .unwrap_or_else(|| "1.1.0".to_string());
                 let tpuart_opts = TpuartOptions {
                     path: t_opts.path,
                     ack_group: t_opts.ack_group.unwrap_or(false),
@@ -389,7 +420,9 @@ impl ApiManager {
             let _ = conn.disconnect().await;
             // Update connection state in DB
             if let Ok(Some((conn_type, opts_json, _))) = self.db.get_connection_config() {
-                let _ = self.db.save_connection_config(&conn_type, &opts_json, false);
+                let _ = self
+                    .db
+                    .save_connection_config(&conn_type, &opts_json, false);
             }
         }
         Ok(())
@@ -448,7 +481,9 @@ impl ApiManager {
 
         let dpt = {
             let cache = GroupAddressCache::get_instance().read().unwrap();
-            cache.get_address_dpt(group_address).ok_or(KnxError::DPTNotFound)?
+            cache
+                .get_address_dpt(group_address)
+                .ok_or(KnxError::DPTNotFound)?
         };
 
         let dpt_val = json_to_dpt_value(&dpt, &value)?;
@@ -482,14 +517,22 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
     let resolved = KnxDataDecode::fallback_dpt(dpt_num);
     match resolved {
         1 => {
-            let b = val.get("value").and_then(|v| v.as_bool())
+            let b = val
+                .get("value")
+                .and_then(|v| v.as_bool())
                 .or_else(|| val.as_bool())
                 .ok_or(KnxError::InvalidParametersForDpt)?;
             Ok(DptValue::Dpt1(b))
         }
         2 => {
-            let control = val.get("control").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let value = val.get("value").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let control = val
+                .get("control")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let value = val
+                .get("value")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt2(Dpt2Value {
                 control,
                 value,
@@ -497,11 +540,16 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
             }))
         }
         3007 | 3008 => {
-            let control = val.get("control").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let step_code = val.get("stepCode")
+            let control = val
+                .get("control")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let step_code = val
+                .get("stepCode")
                 .or_else(|| val.get("stepCodeB"))
                 .or_else(|| val.get("stepCodeCT"))
-                .and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt3(Dpt3Value {
                 control,
                 step_code,
@@ -510,67 +558,98 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
             }))
         }
         4001 | 4002 => {
-            let s = val.get("char").and_then(|v| v.as_str())
+            let s = val
+                .get("char")
+                .and_then(|v| v.as_str())
                 .or_else(|| val.as_str())
                 .ok_or(KnxError::InvalidParametersForDpt)?;
             let c = s.chars().next().ok_or(KnxError::InvalidParametersForDpt)?;
             Ok(DptValue::Dpt4(c))
         }
         5 => {
-            let u = val.get("value").and_then(|v| v.as_u64())
+            let u = val
+                .get("value")
+                .and_then(|v| v.as_u64())
                 .or_else(|| val.as_u64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt5(u))
         }
         5001 => {
-            let pct = val.get("value").and_then(|v| v.as_f64())
+            let pct = val
+                .get("value")
+                .and_then(|v| v.as_f64())
                 .or_else(|| val.as_f64())
                 .ok_or(KnxError::InvalidParametersForDpt)?;
             Ok(DptValue::Dpt5001(format!("{:.1}%", pct)))
         }
         5002 => {
-            let angle = val.get("value").and_then(|v| v.as_f64())
+            let angle = val
+                .get("value")
+                .and_then(|v| v.as_f64())
                 .or_else(|| val.as_f64())
                 .ok_or(KnxError::InvalidParametersForDpt)?;
             Ok(DptValue::Dpt5002(format!("{:.1}°", angle)))
         }
         6 => {
-            let i = val.get("value").and_then(|v| v.as_i64())
+            let i = val
+                .get("value")
+                .and_then(|v| v.as_i64())
                 .or_else(|| val.as_i64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as i8;
             Ok(DptValue::Dpt6(i))
         }
         6020 => {
-            let status = val.get("status").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)?;
-            let mode = val.get("mode").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)?;
+            let status = val
+                .get("status")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)?;
+            let mode = val
+                .get("mode")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)?;
             Ok(DptValue::Dpt6020(Dpt6020Value {
                 status: status.to_string(),
                 mode: mode.to_string(),
             }))
         }
         7 => {
-            let u = val.get("value").and_then(|v| v.as_u64())
+            let u = val
+                .get("value")
+                .and_then(|v| v.as_u64())
                 .or_else(|| val.as_u64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as u16;
             Ok(DptValue::Dpt7(u))
         }
         8 => {
-            let i = val.get("value").and_then(|v| v.as_i64())
+            let i = val
+                .get("value")
+                .and_then(|v| v.as_i64())
                 .or_else(|| val.as_i64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as i16;
             Ok(DptValue::Dpt8(i))
         }
         9 => {
-            let f = val.get("value").and_then(|v| v.as_f64())
+            let f = val
+                .get("value")
+                .and_then(|v| v.as_f64())
                 .or_else(|| val.as_f64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as f32;
             Ok(DptValue::Dpt9(f))
         }
         10 => {
             let day = val.get("day").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
-            let hour = val.get("hour").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let minutes = val.get("minutes").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let seconds = val.get("seconds").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let hour = val
+                .get("hour")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let minutes = val
+                .get("minutes")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let seconds = val
+                .get("seconds")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt10(Dpt10Value {
                 day,
                 day_name: String::new(),
@@ -580,9 +659,18 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
             }))
         }
         11 => {
-            let day = val.get("day").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let month = val.get("month").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let year = val.get("year").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u16;
+            let day = val
+                .get("day")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let month = val
+                .get("month")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let year = val
+                .get("year")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u16;
             Ok(DptValue::Dpt11(Dpt11Value {
                 day,
                 month,
@@ -591,57 +679,104 @@ fn json_to_dpt_value(dpt: &str, val: &Value) -> Result<DptValue, KnxError> {
             }))
         }
         12 => {
-            let u = val.get("value").and_then(|v| v.as_u64())
+            let u = val
+                .get("value")
+                .and_then(|v| v.as_u64())
                 .or_else(|| val.as_u64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as u32;
             Ok(DptValue::Dpt12(u))
         }
         13 => {
-            let i = val.get("value").and_then(|v| v.as_i64())
+            let i = val
+                .get("value")
+                .and_then(|v| v.as_i64())
                 .or_else(|| val.as_i64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as i32;
             Ok(DptValue::Dpt13(i))
         }
         14 => {
-            let f = val.get("value").and_then(|v| v.as_f64())
+            let f = val
+                .get("value")
+                .and_then(|v| v.as_f64())
                 .or_else(|| val.as_f64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as f32;
             Ok(DptValue::Dpt14(f))
         }
         16 => {
-            let text = val.get("text").and_then(|v| v.as_str())
+            let text = val
+                .get("text")
+                .and_then(|v| v.as_str())
                 .or_else(|| val.as_str())
-                .ok_or(KnxError::InvalidParametersForDpt)?.to_string();
+                .ok_or(KnxError::InvalidParametersForDpt)?
+                .to_string();
             Ok(DptValue::Dpt16(text))
         }
         20 => {
-            let u = val.get("value").and_then(|v| v.as_u64())
+            let u = val
+                .get("value")
+                .and_then(|v| v.as_u64())
                 .or_else(|| val.as_u64())
                 .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt20(u))
         }
         232 => {
-            let r = val.get("R").or_else(|| val.get("r")).and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let g = val.get("G").or_else(|| val.get("g")).and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let b = val.get("B").or_else(|| val.get("b")).and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let r = val
+                .get("R")
+                .or_else(|| val.get("r"))
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let g = val
+                .get("G")
+                .or_else(|| val.get("g"))
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let b = val
+                .get("B")
+                .or_else(|| val.get("b"))
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
             Ok(DptValue::Dpt232(Dpt232Value { r, g, b }))
         }
         251 => {
-            let r_val = val.get("R").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let g_val = val.get("G").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let b_val = val.get("B").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            let w_val = val.get("W").and_then(|v| v.as_u64()).ok_or(KnxError::InvalidParametersForDpt)? as u8;
-            
+            let r_val = val
+                .get("R")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let g_val = val
+                .get("G")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let b_val = val
+                .get("B")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+            let w_val = val
+                .get("W")
+                .and_then(|v| v.as_u64())
+                .ok_or(KnxError::InvalidParametersForDpt)? as u8;
+
             let mr = val.get("mR").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
             let mg = val.get("mG").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
             let mb = val.get("mB").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
             let mw = val.get("mW").and_then(|v| v.as_u64()).unwrap_or(1) == 1;
-            
+
             Ok(DptValue::Dpt251(Dpt251Value {
-                r: Dpt251Val { value: r_val, valid: mr },
-                g: Dpt251Val { value: g_val, valid: mg },
-                b: Dpt251Val { value: b_val, valid: mb },
-                w: Dpt251Val { value: w_val, valid: mw },
+                r: Dpt251Val {
+                    value: r_val,
+                    valid: mr,
+                },
+                g: Dpt251Val {
+                    value: g_val,
+                    valid: mg,
+                },
+                b: Dpt251Val {
+                    value: b_val,
+                    valid: mb,
+                },
+                w: Dpt251Val {
+                    value: w_val,
+                    valid: mw,
+                },
             }))
         }
         _ => {

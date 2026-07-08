@@ -47,7 +47,9 @@ pub struct Tpci {
 
 impl Tpci {
     pub fn new(initial_value: u8) -> Self {
-        Self { buffer: [initial_value] }
+        Self {
+            buffer: [initial_value],
+        }
     }
 
     /// Devuelve el valor crudo (8 bits) del TPCI/APCI.
@@ -160,7 +162,11 @@ impl Tpci {
             obj: "TPCI",
             buffer: self.to_buffer(),
             hex: self.to_hex(),
-            data_or_control_flag: if self.get_data_control_flag() { "Control" } else { "Data" },
+            data_or_control_flag: if self.get_data_control_flag() {
+                "Control"
+            } else {
+                "Data"
+            },
             numbered: self.get_numbered_flag(),
             sequence_number: self.get_sequence_number(),
             first_two_bits_from_apci: self.get_first_2bits_of_apci(),

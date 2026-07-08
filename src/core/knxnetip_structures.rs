@@ -1,7 +1,9 @@
-use std::net::Ipv4Addr;
-use crate::core::knxnetip_enum::{HostProtocolCode, ConnectionType, DescriptionType, KnxMedium, TunnelLink};
 use crate::core::device_descriptor_type::DeviceDescriptorType0;
+use crate::core::knxnetip_enum::{
+    ConnectionType, DescriptionType, HostProtocolCode, KnxMedium, TunnelLink,
+};
 use crate::errors::KnxError;
+use std::net::Ipv4Addr;
 
 // ==========================================
 // HPAI (Host Protocol Address Information)
@@ -34,10 +36,10 @@ impl Hpai {
         let mut buffer = vec![0u8; 8];
         buffer[0] = 0x08; // Length
         buffer[1] = self.host_protocol as u8;
-        
+
         let octets = self.ip_address.octets();
         buffer[2..6].copy_from_slice(&octets);
-        
+
         buffer[6] = (self.port >> 8) as u8;
         buffer[7] = (self.port & 0xFF) as u8;
         buffer
@@ -47,8 +49,8 @@ impl Hpai {
         if buffer.len() < 8 {
             return Err(KnxError::InvalidParametersForDpt);
         }
-        let host_proto = HostProtocolCode::from_u8(buffer[1])
-            .ok_or(KnxError::InvalidParametersForDpt)?;
+        let host_proto =
+            HostProtocolCode::from_u8(buffer[1]).ok_or(KnxError::InvalidParametersForDpt)?;
         let ip_address = Ipv4Addr::new(buffer[2], buffer[3], buffer[4], buffer[5]);
         let port = ((buffer[6] as u16) << 8) | buffer[7] as u16;
 
@@ -67,7 +69,11 @@ pub struct Cri {
 }
 
 impl Cri {
-    pub fn new(connection_type: ConnectionType, knx_layer: u8, individual_address: Option<u16>) -> Self {
+    pub fn new(
+        connection_type: ConnectionType,
+        knx_layer: u8,
+        individual_address: Option<u16>,
+    ) -> Self {
         Self {
             connection_type,
             knx_layer,
@@ -76,7 +82,11 @@ impl Cri {
     }
 
     pub fn to_buffer(&self) -> Vec<u8> {
-        let len = if self.individual_address.is_some() { 6 } else { 4 };
+        let len = if self.individual_address.is_some() {
+            6
+        } else {
+            4
+        };
         let mut buffer = vec![0u8; len];
         buffer[0] = len as u8;
         buffer[1] = self.connection_type as u8;
@@ -94,11 +104,15 @@ impl Cri {
             return Err(KnxError::InvalidParametersForDpt);
         }
         let len = buffer[0] as usize;
-        let connection_type = ConnectionType::from_u8(buffer[1])
-            .ok_or(KnxError::InvalidParametersForDpt)?;
+        let connection_type =
+            ConnectionType::from_u8(buffer[1]).ok_or(KnxError::InvalidParametersForDpt)?;
 
         if len == 2 {
-            return Ok(Self::new(connection_type, TunnelLink::TunnelLinklayer as u8, None));
+            return Ok(Self::new(
+                connection_type,
+                TunnelLink::TunnelLinklayer as u8,
+                None,
+            ));
         }
 
         if buffer.len() < 4 {
@@ -146,8 +160,8 @@ impl Crd {
             return Err(KnxError::InvalidParametersForDpt);
         }
         let len = buffer[0];
-        let connection_type = ConnectionType::from_u8(buffer[1])
-            .ok_or(KnxError::InvalidParametersForDpt)?;
+        let connection_type =
+            ConnectionType::from_u8(buffer[1]).ok_or(KnxError::InvalidParametersForDpt)?;
 
         if len == 2 {
             return Ok(Self::new(connection_type, 0));
@@ -540,17 +554,18 @@ impl Dib {
                 if payload.len() < 24 {
                     return Err(KnxError::InvalidParametersForDpt);
                 }
-                let knx_medium = KnxMedium::from_u8(payload[2])
-                    .ok_or(KnxError::InvalidParametersForDpt)?;
+                let knx_medium =
+                    KnxMedium::from_u8(payload[2]).ok_or(KnxError::InvalidParametersForDpt)?;
                 let device_status = payload[3];
                 let individual_address = ((payload[4] as u16) << 8) | payload[5] as u16;
                 let project_installation_id = ((payload[6] as u16) << 8) | payload[7] as u16;
-                
+
                 let mut serial_number = [0u8; 6];
                 serial_number.copy_from_slice(&payload[8..14]);
 
-                let routing_multicast_address = Ipv4Addr::new(payload[14], payload[15], payload[16], payload[17]);
-                
+                let routing_multicast_address =
+                    Ipv4Addr::new(payload[14], payload[15], payload[16], payload[17]);
+
                 let mut mac_address = [0u8; 6];
                 mac_address.copy_from_slice(&payload[18..24]);
 
@@ -578,7 +593,8 @@ impl Dib {
                 }
                 let ip_address = Ipv4Addr::new(payload[2], payload[3], payload[4], payload[5]);
                 let subnet_mask = Ipv4Addr::new(payload[6], payload[7], payload[8], payload[9]);
-                let default_gateway = Ipv4Addr::new(payload[10], payload[11], payload[12], payload[13]);
+                let default_gateway =
+                    Ipv4Addr::new(payload[10], payload[11], payload[12], payload[13]);
                 let ip_capabilities = payload[14];
                 let ip_assignment_method = payload[15];
 
@@ -596,7 +612,8 @@ impl Dib {
                 }
                 let ip_address = Ipv4Addr::new(payload[2], payload[3], payload[4], payload[5]);
                 let subnet_mask = Ipv4Addr::new(payload[6], payload[7], payload[8], payload[9]);
-                let default_gateway = Ipv4Addr::new(payload[10], payload[11], payload[12], payload[13]);
+                let default_gateway =
+                    Ipv4Addr::new(payload[10], payload[11], payload[12], payload[13]);
                 let dhcp_server = Ipv4Addr::new(payload[14], payload[15], payload[16], payload[17]);
                 let ip_assignment_method = payload[18];
 
@@ -663,7 +680,8 @@ impl Dib {
                 let mut additional_individual_addresses = Vec::new();
                 for i in (4..payload.len()).step_by(2) {
                     if i + 1 < payload.len() {
-                        additional_individual_addresses.push(((payload[i] as u16) << 8) | payload[i + 1] as u16);
+                        additional_individual_addresses
+                            .push(((payload[i] as u16) << 8) | payload[i + 1] as u16);
                     }
                 }
                 Ok(Dib::KnxAddresses(KnxAddressesDib {
@@ -713,7 +731,7 @@ impl Srp {
         let len = 2 + self.data.length();
         let mut buffer = vec![0u8; len];
         buffer[0] = len as u8;
-        
+
         let mut type_byte = self.srp_type;
         if self.is_mandatory {
             type_byte |= 0x80;

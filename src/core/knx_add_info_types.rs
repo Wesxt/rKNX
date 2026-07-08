@@ -47,7 +47,9 @@ impl PLMediumInfo {
         let data = parse_data_buffer(buffer, Self::TYPE_ID, Some(Self::DATA_LENGTH as usize))?;
         let mut domain = [0u8; 2];
         domain.copy_from_slice(&data[0..2]);
-        Ok(Self { domain_address: domain })
+        Ok(Self {
+            domain_address: domain,
+        })
     }
 
     pub fn get_buffer(&self) -> Vec<u8> {
@@ -115,7 +117,11 @@ impl RFMediumInformation {
     }
 
     pub fn set_route_last_flag(&mut self, value: bool) {
-        self.rf_info = if value { self.rf_info | 0b10000000 } else { self.rf_info & !0b10000000 };
+        self.rf_info = if value {
+            self.rf_info | 0b10000000
+        } else {
+            self.rf_info & !0b10000000
+        };
     }
 
     pub fn get_rssi(&self) -> u8 {
@@ -139,7 +145,11 @@ impl RFMediumInformation {
     }
 
     pub fn set_battery_state(&mut self, value: bool) {
-        self.rf_info = if value { self.rf_info | 0b00000010 } else { self.rf_info & !0b00000010 };
+        self.rf_info = if value {
+            self.rf_info | 0b00000010
+        } else {
+            self.rf_info & !0b00000010
+        };
     }
 
     pub fn get_unidir_flag(&self) -> bool {
@@ -147,7 +157,11 @@ impl RFMediumInformation {
     }
 
     pub fn set_unidir_flag(&mut self, value: bool) {
-        self.rf_info = if value { self.rf_info | 0b00000001 } else { self.rf_info & !0b00000001 };
+        self.rf_info = if value {
+            self.rf_info | 0b00000001
+        } else {
+            self.rf_info & !0b00000001
+        };
     }
 
     pub fn get_serial_number_or_doa(&self) -> &[u8; 6] {
@@ -182,8 +196,16 @@ impl RFMediumInformation {
             route_last_flag: self.get_route_last_flag(),
             rssi: self.get_rssi(),
             retransmitter_rssi: self.get_retransmitter_rssi(),
-            battery_state: if self.get_battery_state() { "Battery OK" } else { "Battery Low" },
-            unidir_flag: if self.get_unidir_flag() { "Unidirectional" } else { "Bidirectional" },
+            battery_state: if self.get_battery_state() {
+                "Battery OK"
+            } else {
+                "Battery Low"
+            },
+            unidir_flag: if self.get_unidir_flag() {
+                "Unidirectional"
+            } else {
+                "Bidirectional"
+            },
             serial_number_or_doa: self.serial_number_or_doa,
             lfn: self.lfn,
         }
@@ -288,7 +310,12 @@ impl BiBatInformation {
     }
 
     pub fn get_buffer(&self) -> Vec<u8> {
-        vec![Self::TYPE_ID, Self::DATA_LENGTH, self.bibat_ctrl, self.bibat_block]
+        vec![
+            Self::TYPE_ID,
+            Self::DATA_LENGTH,
+            self.bibat_ctrl,
+            self.bibat_block,
+        ]
     }
 
     pub fn describe(&self) -> BiBatInformationDescription {
@@ -434,7 +461,13 @@ impl PreambleAndPostamble {
     }
 
     pub fn get_buffer(&self) -> Vec<u8> {
-        let mut buf = vec![Self::TYPE_ID, Self::DATA_LENGTH, 0, 0, self.postamble_length];
+        let mut buf = vec![
+            Self::TYPE_ID,
+            Self::DATA_LENGTH,
+            0,
+            0,
+            self.postamble_length,
+        ];
         BigEndian::write_u16(&mut buf[2..4], self.preamble_length);
         buf
     }
@@ -833,18 +866,37 @@ impl AddInfo {
         let type_id = buffer[0];
         match type_id {
             PLMediumInfo::TYPE_ID => Ok(AddInfo::PLMediumInfo(PLMediumInfo::from_buffer(buffer)?)),
-            RFMediumInformation::TYPE_ID => Ok(AddInfo::RFMediumInformation(RFMediumInformation::from_buffer(buffer)?)),
-            BusmonitorStatusInfo::TYPE_ID => Ok(AddInfo::BusmonitorStatusInfo(BusmonitorStatusInfo::from_buffer(buffer)?)),
-            TimestampRelative::TYPE_ID => Ok(AddInfo::TimestampRelative(TimestampRelative::from_buffer(buffer)?)),
-            TimeDelayUntilSending::TYPE_ID => Ok(AddInfo::TimeDelayUntilSending(TimeDelayUntilSending::from_buffer(buffer)?)),
-            ExtendedRelativeTimestamp::TYPE_ID => Ok(AddInfo::ExtendedRelativeTimestamp(ExtendedRelativeTimestamp::from_buffer(buffer)?)),
-            BiBatInformation::TYPE_ID => Ok(AddInfo::BiBatInformation(BiBatInformation::from_buffer(buffer)?)),
-            RFMultiInformation::TYPE_ID => Ok(AddInfo::RFMultiInformation(RFMultiInformation::from_buffer(buffer)?)),
-            PreambleAndPostamble::TYPE_ID => Ok(AddInfo::PreambleAndPostamble(PreambleAndPostamble::from_buffer(buffer)?)),
-            RFFastACKInformation::TYPE_ID => Ok(AddInfo::RFFastACKInformation(RFFastACKInformation::from_buffer(buffer)?)),
-            ManufacturerSpecificData::TYPE_ID => Ok(AddInfo::ManufacturerSpecificData(ManufacturerSpecificData::from_buffer(buffer)?)),
+            RFMediumInformation::TYPE_ID => Ok(AddInfo::RFMediumInformation(
+                RFMediumInformation::from_buffer(buffer)?,
+            )),
+            BusmonitorStatusInfo::TYPE_ID => Ok(AddInfo::BusmonitorStatusInfo(
+                BusmonitorStatusInfo::from_buffer(buffer)?,
+            )),
+            TimestampRelative::TYPE_ID => Ok(AddInfo::TimestampRelative(
+                TimestampRelative::from_buffer(buffer)?,
+            )),
+            TimeDelayUntilSending::TYPE_ID => Ok(AddInfo::TimeDelayUntilSending(
+                TimeDelayUntilSending::from_buffer(buffer)?,
+            )),
+            ExtendedRelativeTimestamp::TYPE_ID => Ok(AddInfo::ExtendedRelativeTimestamp(
+                ExtendedRelativeTimestamp::from_buffer(buffer)?,
+            )),
+            BiBatInformation::TYPE_ID => Ok(AddInfo::BiBatInformation(
+                BiBatInformation::from_buffer(buffer)?,
+            )),
+            RFMultiInformation::TYPE_ID => Ok(AddInfo::RFMultiInformation(
+                RFMultiInformation::from_buffer(buffer)?,
+            )),
+            PreambleAndPostamble::TYPE_ID => Ok(AddInfo::PreambleAndPostamble(
+                PreambleAndPostamble::from_buffer(buffer)?,
+            )),
+            RFFastACKInformation::TYPE_ID => Ok(AddInfo::RFFastACKInformation(
+                RFFastACKInformation::from_buffer(buffer)?,
+            )),
+            ManufacturerSpecificData::TYPE_ID => Ok(AddInfo::ManufacturerSpecificData(
+                ManufacturerSpecificData::from_buffer(buffer)?,
+            )),
             _ => Err(KnxError::InvalidParametersForDpt),
         }
     }
 }
-

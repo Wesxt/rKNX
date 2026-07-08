@@ -26,8 +26,10 @@ impl AdditionalInformationField {
     pub fn describe(&self) -> AdditionalInfoDescription {
         AdditionalInfoDescription {
             obj: "AdditionalInformationField",
-            items: self.items.iter().map(|item| {
-                match item {
+            items: self
+                .items
+                .iter()
+                .map(|item| match item {
                     AddInfo::PLMediumInfo(x) => format!("{:?}", x.describe()),
                     AddInfo::RFMediumInformation(x) => format!("{:?}", x.describe()),
                     AddInfo::BusmonitorStatusInfo(x) => format!("{:?}", x.describe()),
@@ -39,8 +41,8 @@ impl AdditionalInformationField {
                     AddInfo::PreambleAndPostamble(x) => format!("{:?}", x.describe()),
                     AddInfo::RFFastACKInformation(x) => format!("{:?}", x.describe()),
                     AddInfo::ManufacturerSpecificData(x) => format!("{:?}", x.describe()),
-                }
-            }).collect(),
+                })
+                .collect(),
         }
     }
 
@@ -406,8 +408,9 @@ impl Cemi {
             return Err(KnxError::InvalidParametersForDpt);
         }
         let message_code = buffer[0];
-        let service_name = crate::core::message_code_field::get_service_name_by_cemi_value(message_code)
-            .ok_or(KnxError::InvalidParametersForDpt)?;
+        let service_name =
+            crate::core::message_code_field::get_service_name_by_cemi_value(message_code)
+                .ok_or(KnxError::InvalidParametersForDpt)?;
 
         match service_name {
             "L_Data.req" | "L_Data.con" | "L_Data.ind" => {
@@ -474,7 +477,11 @@ impl Cemi {
                 }
                 let add_info_len = buffer[1] as usize;
                 let base_offset = 2 + add_info_len;
-                let extra = if service_name == "L_Poll_Data.con" { 8 } else { 7 };
+                let extra = if service_name == "L_Poll_Data.con" {
+                    8
+                } else {
+                    7
+                };
                 if buffer.len() < base_offset + extra {
                     return Err(KnxError::InvalidParametersForDpt);
                 }
@@ -843,7 +850,7 @@ impl CemiDescription {
         out.push_str("CEMI {\n");
         out.push_str(&format!("  obj: '{}',\n", self.obj));
         out.push_str(&format!("  messageCode: {},\n", self.message_code));
-        
+
         if let Some(ref add_info) = self.additional_info {
             out.push_str("  additionalInfo: {\n");
             out.push_str(&format!("    obj: '{}',\n", add_info.obj));
@@ -912,17 +919,26 @@ impl CemiDescription {
             out.push_str("  TPDU: {\n");
             out.push_str(&format!("    obj: '{}',\n", tpdu.obj));
             out.push_str(&format!("    layer: '{}',\n", tpdu.layer));
-            
+
             // tpci
             out.push_str("    tpci: {\n");
             out.push_str(&format!("      obj: '{}',\n", tpdu.tpci.obj));
             let tpci_clean_hex = tpdu.tpci.hex.trim_start_matches("0x").to_lowercase();
             out.push_str(&format!("      buffer: <Buffer {}>,\n", tpci_clean_hex));
             out.push_str(&format!("      hex: '{}',\n", tpdu.tpci.hex.to_lowercase()));
-            out.push_str(&format!("      dataOrControlFlag: '{}',\n", tpdu.tpci.data_or_control_flag));
+            out.push_str(&format!(
+                "      dataOrControlFlag: '{}',\n",
+                tpdu.tpci.data_or_control_flag
+            ));
             out.push_str(&format!("      numbered: {},\n", tpdu.tpci.numbered));
-            out.push_str(&format!("      sequenceNumber: {},\n", tpdu.tpci.sequence_number));
-            out.push_str(&format!("      firstTwoBitsFromAPCI: {},\n", tpdu.tpci.first_two_bits_from_apci));
+            out.push_str(&format!(
+                "      sequenceNumber: {},\n",
+                tpdu.tpci.sequence_number
+            ));
+            out.push_str(&format!(
+                "      firstTwoBitsFromAPCI: {},\n",
+                tpdu.tpci.first_two_bits_from_apci
+            ));
             out.push_str(&format!("      TPCIType: '{}'\n", tpdu.tpci.tpci_type));
             out.push_str("    },\n");
 
@@ -930,17 +946,35 @@ impl CemiDescription {
             out.push_str("    APDU: {\n");
             out.push_str(&format!("      obj: '{}',\n", tpdu.apdu.obj));
             out.push_str(&format!("      layer: '{}',\n", tpdu.apdu.layer));
-            
+
             out.push_str("      tpci: {\n");
             out.push_str(&format!("        obj: '{}',\n", tpdu.apdu.tpci.obj));
             let apdu_tpci_clean_hex = tpdu.apdu.tpci.hex.trim_start_matches("0x").to_lowercase();
-            out.push_str(&format!("        buffer: <Buffer {}>,\n", apdu_tpci_clean_hex));
-            out.push_str(&format!("        hex: '{}',\n", tpdu.apdu.tpci.hex.to_lowercase()));
-            out.push_str(&format!("        dataOrControlFlag: '{}',\n", tpdu.apdu.tpci.data_or_control_flag));
+            out.push_str(&format!(
+                "        buffer: <Buffer {}>,\n",
+                apdu_tpci_clean_hex
+            ));
+            out.push_str(&format!(
+                "        hex: '{}',\n",
+                tpdu.apdu.tpci.hex.to_lowercase()
+            ));
+            out.push_str(&format!(
+                "        dataOrControlFlag: '{}',\n",
+                tpdu.apdu.tpci.data_or_control_flag
+            ));
             out.push_str(&format!("        numbered: {},\n", tpdu.apdu.tpci.numbered));
-            out.push_str(&format!("        sequenceNumber: {},\n", tpdu.apdu.tpci.sequence_number));
-            out.push_str(&format!("        firstTwoBitsFromAPCI: {},\n", tpdu.apdu.tpci.first_two_bits_from_apci));
-            out.push_str(&format!("        TPCIType: '{}'\n", tpdu.apdu.tpci.tpci_type));
+            out.push_str(&format!(
+                "        sequenceNumber: {},\n",
+                tpdu.apdu.tpci.sequence_number
+            ));
+            out.push_str(&format!(
+                "        firstTwoBitsFromAPCI: {},\n",
+                tpdu.apdu.tpci.first_two_bits_from_apci
+            ));
+            out.push_str(&format!(
+                "        TPCIType: '{}'\n",
+                tpdu.apdu.tpci.tpci_type
+            ));
             out.push_str("      },\n");
 
             out.push_str("      apci: {\n");
@@ -949,7 +983,12 @@ impl CemiDescription {
             out.push_str(&format!("        value: '{}'\n", tpdu.apdu.apci.value));
             out.push_str("      },\n");
 
-            let data_hex: Vec<String> = tpdu.apdu.data.iter().map(|b| format!("{:02x}", b)).collect();
+            let data_hex: Vec<String> = tpdu
+                .apdu
+                .data
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect();
             out.push_str(&format!("      data: <Buffer {}>\n", data_hex.join(" ")));
             out.push_str("    }\n");
 

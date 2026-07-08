@@ -1,10 +1,10 @@
 use crate::core::control_field::ControlField;
+use crate::core::layers::data::apdu::Apdu;
 use crate::core::layers::data::npdu::Npdu;
 use crate::core::layers::data::tpdu::Tpdu;
-use crate::core::layers::data::apdu::Apdu;
 use crate::core::message_code_field::{get_emi_message_code, get_service_name_by_emi_value};
-use crate::utils::knx_helper::KnxHelper;
 use crate::errors::KnxError;
+use crate::utils::knx_helper::KnxHelper;
 use byteorder::{BigEndian, ByteOrder};
 
 // ==========================================
@@ -319,22 +319,28 @@ impl Emi {
                 buffer[6..].copy_from_slice(&lp.data);
                 buffer
             }
-            Emi::LDataReq(ld) | Emi::LDataCon(ld) | Emi::LDataInd(ld) |
-            Emi::LSystemBroadcastReq(ld) | Emi::LSystemBroadcastCon(ld) | Emi::LSystemBroadcastInd(ld) => {
+            Emi::LDataReq(ld)
+            | Emi::LDataCon(ld)
+            | Emi::LDataInd(ld)
+            | Emi::LSystemBroadcastReq(ld)
+            | Emi::LSystemBroadcastCon(ld)
+            | Emi::LSystemBroadcastInd(ld) => {
                 let npdu_buffer = ld.npdu.to_buffer();
                 let mut buffer = vec![0u8; 6 + npdu_buffer.len()];
                 buffer[0] = self.get_message_code();
                 buffer[1] = ld.control_field1.get_buffer()[0];
 
                 if matches!(self, Emi::LDataInd(_) | Emi::LSystemBroadcastInd(_)) {
-                    let src_bytes = KnxHelper::get_address_from_string(&ld.source_address).unwrap_or_default();
+                    let src_bytes =
+                        KnxHelper::get_address_from_string(&ld.source_address).unwrap_or_default();
                     buffer[2..4].copy_from_slice(&src_bytes);
                 } else {
                     buffer[2] = 0;
                     buffer[3] = 0;
                 }
 
-                let dst_bytes = KnxHelper::get_address_from_string(&ld.destination_address).unwrap_or_default();
+                let dst_bytes =
+                    KnxHelper::get_address_from_string(&ld.destination_address).unwrap_or_default();
                 buffer[4..6].copy_from_slice(&dst_bytes);
 
                 buffer[6..].copy_from_slice(&npdu_buffer);
@@ -348,23 +354,34 @@ impl Emi {
                 buffer[6] = lp.nr_of_slots & 0x0f;
                 buffer
             }
-            Emi::NDataIndividualReq(nd) | Emi::NDataIndividualCon(nd) | Emi::NDataIndividualInd(nd) |
-            Emi::NDataGroupReq(nd) | Emi::NDataGroupCon(nd) | Emi::NDataGroupInd(nd) |
-            Emi::NDataBroadcastReq(nd) | Emi::NDataBroadcastCon(nd) | Emi::NDataBroadcastInd(nd) => {
+            Emi::NDataIndividualReq(nd)
+            | Emi::NDataIndividualCon(nd)
+            | Emi::NDataIndividualInd(nd)
+            | Emi::NDataGroupReq(nd)
+            | Emi::NDataGroupCon(nd)
+            | Emi::NDataGroupInd(nd)
+            | Emi::NDataBroadcastReq(nd)
+            | Emi::NDataBroadcastCon(nd)
+            | Emi::NDataBroadcastInd(nd) => {
                 let tpdu_buffer = nd.tpdu.to_buffer();
                 let mut buffer = vec![0u8; 7 + tpdu_buffer.len()];
                 buffer[0] = self.get_message_code();
                 buffer[1] = nd.control_field1.get_buffer()[0];
 
-                if matches!(self, Emi::NDataIndividualInd(_) | Emi::NDataGroupInd(_) | Emi::NDataBroadcastInd(_)) {
-                    let src_bytes = KnxHelper::get_address_from_string(&nd.source_address).unwrap_or_default();
+                if matches!(
+                    self,
+                    Emi::NDataIndividualInd(_) | Emi::NDataGroupInd(_) | Emi::NDataBroadcastInd(_)
+                ) {
+                    let src_bytes =
+                        KnxHelper::get_address_from_string(&nd.source_address).unwrap_or_default();
                     buffer[2..4].copy_from_slice(&src_bytes);
                 } else {
                     buffer[2] = 0;
                     buffer[3] = 0;
                 }
 
-                let dst_bytes = KnxHelper::get_address_from_string(&nd.destination_address).unwrap_or_default();
+                let dst_bytes =
+                    KnxHelper::get_address_from_string(&nd.destination_address).unwrap_or_default();
                 buffer[4..6].copy_from_slice(&dst_bytes);
 
                 buffer[6] = ((nd.hop_count & 0x0f) << 4) | (tpdu_buffer.len() as u8 & 0x0f);
@@ -383,32 +400,60 @@ impl Emi {
                 let mut buffer = vec![0u8; 6];
                 buffer[0] = self.get_message_code();
                 buffer[1] = tc.control;
-                let addr_bytes = KnxHelper::get_address_from_string(&tc.address).unwrap_or_default();
+                let addr_bytes =
+                    KnxHelper::get_address_from_string(&tc.address).unwrap_or_default();
                 buffer[4..6].copy_from_slice(&addr_bytes);
                 buffer
             }
-            Emi::TConnectCon(tc) | Emi::TConnectInd(tc) |
-            Emi::TDisconnectCon(tc) | Emi::TDisconnectInd(tc) |
-            Emi::MConnectInd(tc) | Emi::MDisconnectInd(tc) => {
+            Emi::TConnectCon(tc)
+            | Emi::TConnectInd(tc)
+            | Emi::TDisconnectCon(tc)
+            | Emi::TDisconnectInd(tc)
+            | Emi::MConnectInd(tc)
+            | Emi::MDisconnectInd(tc) => {
                 let mut buffer = vec![0u8; 6];
                 buffer[0] = self.get_message_code();
                 buffer[1] = tc.control;
-                let addr_bytes = KnxHelper::get_address_from_string(&tc.address).unwrap_or_default();
+                let addr_bytes =
+                    KnxHelper::get_address_from_string(&tc.address).unwrap_or_default();
                 buffer[2..4].copy_from_slice(&addr_bytes);
                 buffer
             }
-            Emi::TDataConnectedReq(td) | Emi::TDataConnectedCon(td) | Emi::TDataConnectedInd(td) |
-            Emi::TDataGroupReq(td) | Emi::TDataGroupCon(td) | Emi::TDataGroupInd(td) |
-            Emi::TDataIndividualReq(td) | Emi::TDataIndividualCon(td) | Emi::TDataIndividualInd(td) |
-            Emi::TDataBroadcastReq(td) | Emi::TDataBroadcastCon(td) | Emi::TDataBroadcastInd(td) |
-            Emi::MUserDataConnectedReq(td) | Emi::MUserDataConnectedCon(td) | Emi::MUserDataConnectedInd(td) |
-            Emi::MUserDataIndividualReq(td) | Emi::MUserDataIndividualCon(td) | Emi::MUserDataIndividualInd(td) |
-            Emi::ADataGroupReq(td) | Emi::ADataGroupCon(td) | Emi::ADataGroupInd(td) |
-            Emi::ADataIndividualReq(td) | Emi::ADataIndividualCon(td) | Emi::ADataIndividualInd(td) |
-            Emi::ADataBroadcastReq(td) | Emi::ADataBroadcastCon(td) | Emi::ADataBroadcastInd(td) |
-            Emi::ADataConnectedReq(td) | Emi::ADataConnectedCon(td) | Emi::ADataConnectedInd(td) |
-            Emi::AUserDataConnectedReq(td) | Emi::AUserDataConnectedCon(td) | Emi::AUserDataConnectedInd(td) |
-            Emi::AUserDataUnconnectedReq(td) | Emi::AUserDataUnconnectedInd(td) => {
+            Emi::TDataConnectedReq(td)
+            | Emi::TDataConnectedCon(td)
+            | Emi::TDataConnectedInd(td)
+            | Emi::TDataGroupReq(td)
+            | Emi::TDataGroupCon(td)
+            | Emi::TDataGroupInd(td)
+            | Emi::TDataIndividualReq(td)
+            | Emi::TDataIndividualCon(td)
+            | Emi::TDataIndividualInd(td)
+            | Emi::TDataBroadcastReq(td)
+            | Emi::TDataBroadcastCon(td)
+            | Emi::TDataBroadcastInd(td)
+            | Emi::MUserDataConnectedReq(td)
+            | Emi::MUserDataConnectedCon(td)
+            | Emi::MUserDataConnectedInd(td)
+            | Emi::MUserDataIndividualReq(td)
+            | Emi::MUserDataIndividualCon(td)
+            | Emi::MUserDataIndividualInd(td)
+            | Emi::ADataGroupReq(td)
+            | Emi::ADataGroupCon(td)
+            | Emi::ADataGroupInd(td)
+            | Emi::ADataIndividualReq(td)
+            | Emi::ADataIndividualCon(td)
+            | Emi::ADataIndividualInd(td)
+            | Emi::ADataBroadcastReq(td)
+            | Emi::ADataBroadcastCon(td)
+            | Emi::ADataBroadcastInd(td)
+            | Emi::ADataConnectedReq(td)
+            | Emi::ADataConnectedCon(td)
+            | Emi::ADataConnectedInd(td)
+            | Emi::AUserDataConnectedReq(td)
+            | Emi::AUserDataConnectedCon(td)
+            | Emi::AUserDataConnectedInd(td)
+            | Emi::AUserDataUnconnectedReq(td)
+            | Emi::AUserDataUnconnectedInd(td) => {
                 let apdu_buffer = td.apdu.to_buffer();
                 let mut buffer = vec![0u8; 7 + apdu_buffer.len()];
                 buffer[0] = self.get_message_code();
@@ -416,10 +461,12 @@ impl Emi {
 
                 let is_ind = self.is_ind_variant();
                 if is_ind {
-                    let src_bytes = KnxHelper::get_address_from_string(&td.source_address).unwrap_or_default();
+                    let src_bytes =
+                        KnxHelper::get_address_from_string(&td.source_address).unwrap_or_default();
                     buffer[2..4].copy_from_slice(&src_bytes);
                 } else if !self.is_con_variant() {
-                    let dst_bytes = KnxHelper::get_address_from_string(&td.destination_address).unwrap_or_default();
+                    let dst_bytes = KnxHelper::get_address_from_string(&td.destination_address)
+                        .unwrap_or_default();
                     buffer[4..6].copy_from_slice(&dst_bytes);
                 }
 
@@ -428,8 +475,10 @@ impl Emi {
                 buffer[7..].copy_from_slice(&apdu_buffer);
                 buffer
             }
-            Emi::TPollDataReq(tp) | Emi::TPollDataCon(tp) |
-            Emi::APollDataReq(tp) | Emi::APollDataCon(tp) => {
+            Emi::TPollDataReq(tp)
+            | Emi::TPollDataCon(tp)
+            | Emi::APollDataReq(tp)
+            | Emi::APollDataCon(tp) => {
                 let mut buffer = vec![0u8; 7];
                 buffer[0] = self.get_message_code();
                 buffer[1] = tp.control_field1.get_buffer()[0];
@@ -443,7 +492,8 @@ impl Emi {
                 BigEndian::write_u16(&mut buffer[1..3], mp.interface_object_type);
                 buffer[3] = mp.object_instance;
                 buffer[4] = mp.property_id;
-                let val5 = (mp.start_index & 0x0FFF) | ((mp.number_of_elements as u16 & 0x0F) << 12);
+                let val5 =
+                    (mp.start_index & 0x0FFF) | ((mp.number_of_elements as u16 & 0x0F) << 12);
                 BigEndian::write_u16(&mut buffer[5..7], val5);
                 buffer
             }
@@ -453,7 +503,8 @@ impl Emi {
                 BigEndian::write_u16(&mut buffer[1..3], mp.interface_object_type);
                 buffer[3] = mp.object_instance;
                 buffer[4] = mp.property_id;
-                let val5 = (mp.start_index & 0x0FFF) | ((mp.number_of_elements as u16 & 0x0F) << 12);
+                let val5 =
+                    (mp.start_index & 0x0FFF) | ((mp.number_of_elements as u16 & 0x0F) << 12);
                 BigEndian::write_u16(&mut buffer[5..7], val5);
                 buffer[7..].copy_from_slice(&mp.data);
                 buffer
@@ -465,7 +516,8 @@ impl Emi {
                 BigEndian::write_u16(&mut buffer[1..3], mp.interface_object_type);
                 buffer[3] = mp.object_instance;
                 buffer[4] = mp.property_id;
-                let val5 = (mp.start_index & 0x0FFF) | ((mp.number_of_elements as u16 & 0x0F) << 12);
+                let val5 =
+                    (mp.start_index & 0x0FFF) | ((mp.number_of_elements as u16 & 0x0F) << 12);
                 BigEndian::write_u16(&mut buffer[5..7], val5);
                 if mp.number_of_elements == 0 {
                     buffer[7] = mp.error_info;
@@ -520,17 +572,25 @@ impl Emi {
 
         let message_code = buffer[0];
         let service_name = get_service_name_by_emi_value(message_code)
-            .or_else(|| crate::core::message_code_field::get_service_name_by_cemi_value(message_code))
+            .or_else(|| {
+                crate::core::message_code_field::get_service_name_by_cemi_value(message_code)
+            })
             .unwrap_or("");
 
         match service_name {
             "PEI_Switch.req" => {
-                if buffer.len() < 2 { return Err(KnxError::InvalidParametersForDpt); }
-                Ok(Emi::PeiSwitchReq(PeiSwitchEmi { message_code, control: buffer[1] }))
+                if buffer.len() < 2 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
+                Ok(Emi::PeiSwitchReq(PeiSwitchEmi {
+                    message_code,
+                    control: buffer[1],
+                }))
             }
-            "L_Busmon.ind" => {
-                Ok(Emi::LBusmonInd(LBusmonEmi { message_code, data: buffer[1..].to_vec() }))
-            }
+            "L_Busmon.ind" => Ok(Emi::LBusmonInd(LBusmonEmi {
+                message_code,
+                data: buffer[1..].to_vec(),
+            })),
             "L_Raw.req" | "L_Raw.con" | "L_Raw.ind" => {
                 let data = buffer[1..].to_vec();
                 let lr = LRawEmi { message_code, data };
@@ -543,12 +603,22 @@ impl Emi {
                 }
             }
             "L_Plain_Data.req" => {
-                if buffer.len() < 6 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 6 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let time = BigEndian::read_u32(&buffer[2..6]);
-                Ok(Emi::LPlainDataReq(LPlainDataEmi { message_code, time, data: buffer[6..].to_vec() }))
+                Ok(Emi::LPlainDataReq(LPlainDataEmi {
+                    message_code,
+                    time,
+                    data: buffer[6..].to_vec(),
+                }))
             }
-            "L_Data.req" | "L_Data.con" | "L_Data.ind" |
-            "L_SystemBroadcast.req" | "L_SystemBroadcast.con" | "L_SystemBroadcast.ind" => {
+            "L_Data.req"
+            | "L_Data.con"
+            | "L_Data.ind"
+            | "L_SystemBroadcast.req"
+            | "L_SystemBroadcast.con"
+            | "L_SystemBroadcast.ind" => {
                 if buffer.len() < 7 {
                     return Err(KnxError::InvalidParametersForDpt);
                 }
@@ -561,11 +631,12 @@ impl Emi {
                 };
 
                 let npdu = Npdu::from_buffer(&buffer[6..])?;
-                let is_group = npdu.address_type == crate::core::control_field_extended::AddressType::Group;
+                let is_group =
+                    npdu.address_type == crate::core::control_field_extended::AddressType::Group;
                 let destination_address = KnxHelper::get_address_to_string(
                     &buffer[4..6],
                     if is_group { "/" } else { "." },
-                    is_group
+                    is_group,
                 )?;
 
                 let ld = LDataEmi {
@@ -586,21 +657,36 @@ impl Emi {
                 }
             }
             "L_Poll_Data.req" | "L_Poll_Data.con" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let control_field1 = ControlField::new(buffer[1]);
                 let polling_group = BigEndian::read_u16(&buffer[4..6]);
                 let nr_of_slots = buffer[6] & 0x0f;
-                let lp = LPollDataEmi { message_code, control_field1, polling_group, nr_of_slots };
+                let lp = LPollDataEmi {
+                    message_code,
+                    control_field1,
+                    polling_group,
+                    nr_of_slots,
+                };
                 if service_name == "L_Poll_Data.req" {
                     Ok(Emi::LPollDataReq(lp))
                 } else {
                     Ok(Emi::LPollDataCon(lp))
                 }
             }
-            "N_Data_Individual.req" | "N_Data_Individual.con" | "N_Data_Individual.ind" |
-            "N_Data_Group.req" | "N_Data_Group.con" | "N_Data_Group.ind" |
-            "N_Data_Broadcast.req" | "N_Data_Broadcast.con" | "N_Data_Broadcast.ind" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+            "N_Data_Individual.req"
+            | "N_Data_Individual.con"
+            | "N_Data_Individual.ind"
+            | "N_Data_Group.req"
+            | "N_Data_Group.con"
+            | "N_Data_Group.ind"
+            | "N_Data_Broadcast.req"
+            | "N_Data_Broadcast.con"
+            | "N_Data_Broadcast.ind" => {
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let control_field1 = ControlField::new(buffer[1]);
                 let is_ind = service_name.ends_with(".ind");
                 let source_address = if is_ind {
@@ -612,15 +698,24 @@ impl Emi {
                 let destination_address = KnxHelper::get_address_to_string(
                     &buffer[4..6],
                     if is_group { "/" } else { "." },
-                    is_group
+                    is_group,
                 )?;
                 let octet6 = buffer[6];
                 let hop_count = (octet6 >> 4) & 0x0f;
                 let length = (octet6 & 0x0f) as usize;
-                if buffer.len() < 7 + length { return Err(KnxError::InvalidParametersForDpt); }
-                let tpdu = Tpdu::from_buffer(&buffer[7..7+length])?;
+                if buffer.len() < 7 + length {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
+                let tpdu = Tpdu::from_buffer(&buffer[7..7 + length])?;
 
-                let nd = NDataEmi { message_code, control_field1, source_address, destination_address, hop_count, tpdu };
+                let nd = NDataEmi {
+                    message_code,
+                    control_field1,
+                    source_address,
+                    destination_address,
+                    hop_count,
+                    tpdu,
+                };
                 match service_name {
                     "N_Data_Individual.req" => Ok(Emi::NDataIndividualReq(nd)),
                     "N_Data_Individual.con" => Ok(Emi::NDataIndividualCon(nd)),
@@ -634,11 +729,18 @@ impl Emi {
                 }
             }
             "N_Poll_Data.req" | "N_Poll_Data.con" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let control_field1 = ControlField::new(buffer[1]);
                 let polling_group = BigEndian::read_u16(&buffer[4..6]);
                 let nr_of_slots = buffer[6] & 0x0f;
-                let np = NPollDataEmi { message_code, control_field1, polling_group, nr_of_slots };
+                let np = NPollDataEmi {
+                    message_code,
+                    control_field1,
+                    polling_group,
+                    nr_of_slots,
+                };
                 if service_name == "N_Poll_Data.req" {
                     Ok(Emi::NPollDataReq(np))
                 } else {
@@ -646,20 +748,32 @@ impl Emi {
                 }
             }
             "T_Connect.req" | "T_Disconnect.req" => {
-                if buffer.len() < 6 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 6 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let address = KnxHelper::get_address_to_string(&buffer[4..6], ".", false)?;
-                let tc = TConnectDisconnectEmi { message_code, control: buffer[1], address };
+                let tc = TConnectDisconnectEmi {
+                    message_code,
+                    control: buffer[1],
+                    address,
+                };
                 if service_name == "T_Connect.req" {
                     Ok(Emi::TConnectReq(tc))
                 } else {
                     Ok(Emi::TDisconnectReq(tc))
                 }
             }
-            "T_Connect.con" | "T_Connect.ind" | "T_Disconnect.con" | "T_Disconnect.ind" |
-            "M_Connect.ind" | "M_Disconnect.ind" => {
-                if buffer.len() < 4 { return Err(KnxError::InvalidParametersForDpt); }
+            "T_Connect.con" | "T_Connect.ind" | "T_Disconnect.con" | "T_Disconnect.ind"
+            | "M_Connect.ind" | "M_Disconnect.ind" => {
+                if buffer.len() < 4 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let address = KnxHelper::get_address_to_string(&buffer[2..4], ".", false)?;
-                let tc = TConnectDisconnectEmi { message_code, control: buffer[1], address };
+                let tc = TConnectDisconnectEmi {
+                    message_code,
+                    control: buffer[1],
+                    address,
+                };
                 match service_name {
                     "T_Connect.con" => Ok(Emi::TConnectCon(tc)),
                     "T_Connect.ind" => Ok(Emi::TConnectInd(tc)),
@@ -669,21 +783,49 @@ impl Emi {
                     _ => Ok(Emi::MDisconnectInd(tc)),
                 }
             }
-            "T_Data_Connected.req" | "T_Data_Connected.con" | "T_Data_Connected.ind" |
-            "T_Data_Group.req" | "T_Data_Group.con" | "T_Data_Group.ind" |
-            "T_Data_Individual.req" | "T_Data_Individual.con" | "T_Data_Individual.ind" |
-            "T_Data_Broadcast.req" | "T_Data_Broadcast.con" | "T_Data_Broadcast.ind" |
-            "M_User_Data_Connected.req" | "M_User_Data_Connected.con" | "M_User_Data_Connected.ind" |
-            "M_User_Data_Individual.req" | "M_User_Data_Individual.con" | "M_User_Data_Individual.ind" |
-            "A_Data_Group.req" | "A_Data_Group.con" | "A_Data_Group.ind" |
-            "A_Data_Individual.req" | "A_Data_Individual.con" | "A_Data_Individual.ind" |
-            "A_Data_Broadcast.req" | "A_Data_Broadcast.con" | "A_Data_Broadcast.ind" |
-            "A_Data_Connected.req" | "A_Data_Connected.con" | "A_Data_Connected.ind" |
-            "A_UserData_Connected.req" | "A_UserData_Connected.con" | "A_UserData_Connected.ind" |
-            "A_User_Data_Connected.req" | "A_User_Data_Connected.con" | "A_User_Data_Connected.ind" |
-            "A_UserData_Unconnected.req" | "A_UserData_Unconnected.ind" |
-            "A_User_Data_Unconnected.req" | "A_User_Data_Unconnected.ind" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+            "T_Data_Connected.req"
+            | "T_Data_Connected.con"
+            | "T_Data_Connected.ind"
+            | "T_Data_Group.req"
+            | "T_Data_Group.con"
+            | "T_Data_Group.ind"
+            | "T_Data_Individual.req"
+            | "T_Data_Individual.con"
+            | "T_Data_Individual.ind"
+            | "T_Data_Broadcast.req"
+            | "T_Data_Broadcast.con"
+            | "T_Data_Broadcast.ind"
+            | "M_User_Data_Connected.req"
+            | "M_User_Data_Connected.con"
+            | "M_User_Data_Connected.ind"
+            | "M_User_Data_Individual.req"
+            | "M_User_Data_Individual.con"
+            | "M_User_Data_Individual.ind"
+            | "A_Data_Group.req"
+            | "A_Data_Group.con"
+            | "A_Data_Group.ind"
+            | "A_Data_Individual.req"
+            | "A_Data_Individual.con"
+            | "A_Data_Individual.ind"
+            | "A_Data_Broadcast.req"
+            | "A_Data_Broadcast.con"
+            | "A_Data_Broadcast.ind"
+            | "A_Data_Connected.req"
+            | "A_Data_Connected.con"
+            | "A_Data_Connected.ind"
+            | "A_UserData_Connected.req"
+            | "A_UserData_Connected.con"
+            | "A_UserData_Connected.ind"
+            | "A_User_Data_Connected.req"
+            | "A_User_Data_Connected.con"
+            | "A_User_Data_Connected.ind"
+            | "A_UserData_Unconnected.req"
+            | "A_UserData_Unconnected.ind"
+            | "A_User_Data_Unconnected.req"
+            | "A_User_Data_Unconnected.ind" => {
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let control_field1 = ControlField::new(buffer[1]);
                 let is_ind = service_name.ends_with(".ind");
                 let is_con = service_name.ends_with(".con");
@@ -697,7 +839,7 @@ impl Emi {
                     KnxHelper::get_address_to_string(
                         &buffer[4..6],
                         if is_group { "/" } else { "." },
-                        is_group
+                        is_group,
                     )?
                 } else {
                     "0.0.0".to_string()
@@ -707,10 +849,20 @@ impl Emi {
                 let octet6 = buffer[6];
                 let hop_count = (octet6 >> 4) & 0x07;
                 let length = (octet6 & 0x0f) as usize;
-                if buffer.len() < 7 + length { return Err(KnxError::InvalidParametersForDpt); }
-                let apdu = Apdu::from_buffer(&buffer[7..7+length])?;
+                if buffer.len() < 7 + length {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
+                let apdu = Apdu::from_buffer(&buffer[7..7 + length])?;
 
-                let td = TDataEmi { message_code, control_field1, source_address, destination_address, sap, hop_count, apdu };
+                let td = TDataEmi {
+                    message_code,
+                    control_field1,
+                    source_address,
+                    destination_address,
+                    sap,
+                    hop_count,
+                    apdu,
+                };
                 match service_name {
                     "T_Data_Connected.req" => Ok(Emi::TDataConnectedReq(td)),
                     "T_Data_Connected.con" => Ok(Emi::TDataConnectedCon(td)),
@@ -742,21 +894,35 @@ impl Emi {
                     "A_Data_Connected.req" => Ok(Emi::ADataConnectedReq(td)),
                     "A_Data_Connected.con" => Ok(Emi::ADataConnectedCon(td)),
                     "A_Data_Connected.ind" => Ok(Emi::ADataConnectedInd(td)),
-                    "A_UserData_Connected.req" | "A_User_Data_Connected.req" => Ok(Emi::AUserDataConnectedReq(td)),
-                    "A_UserData_Connected.con" | "A_User_Data_Connected.con" => Ok(Emi::AUserDataConnectedCon(td)),
-                    "A_UserData_Connected.ind" | "A_User_Data_Connected.ind" => Ok(Emi::AUserDataConnectedInd(td)),
-                    "A_UserData_Unconnected.req" | "A_User_Data_Unconnected.req" => Ok(Emi::AUserDataUnconnectedReq(td)),
+                    "A_UserData_Connected.req" | "A_User_Data_Connected.req" => {
+                        Ok(Emi::AUserDataConnectedReq(td))
+                    }
+                    "A_UserData_Connected.con" | "A_User_Data_Connected.con" => {
+                        Ok(Emi::AUserDataConnectedCon(td))
+                    }
+                    "A_UserData_Connected.ind" | "A_User_Data_Connected.ind" => {
+                        Ok(Emi::AUserDataConnectedInd(td))
+                    }
+                    "A_UserData_Unconnected.req" | "A_User_Data_Unconnected.req" => {
+                        Ok(Emi::AUserDataUnconnectedReq(td))
+                    }
                     _ => Ok(Emi::AUserDataUnconnectedInd(td)),
                 }
             }
-            "T_Poll_Data.req" | "T_Poll_Data.con" |
-            "A_Poll_Data.req" | "A_Poll_Data.con" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+            "T_Poll_Data.req" | "T_Poll_Data.con" | "A_Poll_Data.req" | "A_Poll_Data.con" => {
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let control_field1 = ControlField::new(buffer[1]);
                 let polling_group = BigEndian::read_u16(&buffer[4..6]);
                 let nr_of_slots = buffer[6] & 0x0f;
-                let tp = TPollDataEmi { message_code, control_field1, polling_group, nr_of_slots };
-                
+                let tp = TPollDataEmi {
+                    message_code,
+                    control_field1,
+                    polling_group,
+                    nr_of_slots,
+                };
+
                 if service_name == "T_Poll_Data.req" || service_name == "A_Poll_Data.req" {
                     if service_name == "T_Poll_Data.req" {
                         Ok(Emi::TPollDataReq(tp))
@@ -772,7 +938,9 @@ impl Emi {
                 }
             }
             "M_PropRead.req" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let interface_object_type = BigEndian::read_u16(&buffer[1..3]);
                 let object_instance = buffer[3];
                 let property_id = buffer[4];
@@ -788,7 +956,9 @@ impl Emi {
                 }))
             }
             "M_PropRead.con" | "M_PropWrite.req" | "M_PropInfo.ind" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let interface_object_type = BigEndian::read_u16(&buffer[1..3]);
                 let object_instance = buffer[3];
                 let property_id = buffer[4];
@@ -811,7 +981,9 @@ impl Emi {
                 }
             }
             "M_PropWrite.con" => {
-                if buffer.len() < 7 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 7 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let interface_object_type = BigEndian::read_u16(&buffer[1..3]);
                 let object_instance = buffer[3];
                 let property_id = buffer[4];
@@ -832,7 +1004,9 @@ impl Emi {
                 }))
             }
             "M_FuncPropCommand.req" | "M_FuncPropStateRead.req" => {
-                if buffer.len() < 5 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 5 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let interface_object_type = BigEndian::read_u16(&buffer[1..3]);
                 let object_instance = buffer[3];
                 let property_id = buffer[4];
@@ -850,7 +1024,9 @@ impl Emi {
                 }
             }
             "M_FuncPropCommand.con" | "M_FuncPropStateRead.con" => {
-                if buffer.len() < 6 { return Err(KnxError::InvalidParametersForDpt); }
+                if buffer.len() < 6 {
+                    return Err(KnxError::InvalidParametersForDpt);
+                }
                 let interface_object_type = BigEndian::read_u16(&buffer[1..3]);
                 let object_instance = buffer[3];
                 let property_id = buffer[4];

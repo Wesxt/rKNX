@@ -1,3 +1,3 @@
 pub mod apdu;
-pub mod tpdu;
 pub mod npdu;
+pub mod tpdu;
